@@ -1,11 +1,11 @@
 import re
 import time
 import logging
-import pandas.core.frame
 import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import pandas.core.frame
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
@@ -34,12 +34,12 @@ FLOAT_NUMBER_REGEX = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
 # weather site url
 WEATHER_URl = "http://pogodaiklimat.ru/monitor.php"
 
-# ids of cities from weather site
+# IDs of cities from weather site
 cities = {
     'Khanty-Mansiysk': 23933,
     'October': 23734,
-    'Leushi':28064,
-    'Lariak':23867,
+    'Leushi': 28064,
+    'Lariak': 23867,
     'Ugut': 23946
 }
 statistic_cols = {
@@ -64,19 +64,19 @@ streamformat = logging.Formatter("%(asctime)s : %(levelname)s : %(message)s", da
 stream.setFormatter(streamformat)
 logger.addHandler(stream)
 
+
 def get_weather_data(city_name: str, start_year=2000, end_year=2021):
     """
     Function for obtaining weather data for specified city.
     Two files are generated: average monthly temperatures and average monthly precipitations.
 
-    param city_name: city for which data is retrieved (name from cities list)
-    type city_name: str
-    param start_year: year from which data is retrieved
-    type start_year: int
-    param end_year: year for which data is retrieved
-    type end_year: int
-    return: returns -1 if an error occurred and 0 if there were no errors
-    rtype: int
+    Args:
+        city_name (str): city for which data is retrieved (name from cities list).
+        start_year (int): year from which data is retrieved.
+        end_year (int): year for which data is retrieved.
+
+    Returns:
+        int: -1 if an error occurred and 0 if there were no errors.
     """
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", engine='xlsxwriter')
     df_temperatures = pd.DataFrame({'Month': range(1, 13)}, columns=['Month'])
@@ -139,12 +139,13 @@ def get_weather_data(city_name: str, start_year=2000, end_year=2021):
 def get_full_data(city_name: str):
     """
     A function to get the complete dataset for a specified city.
-    Combines a dataset from fire statistics and a weather dataset
+    Combines a dataset from fire statistics and a weather dataset.
 
-    param city: city for which data is returned (name from cities list)
-    type city: str
-    return: dataframe (fires + weather)
-    rtype: pandas.core.frame.DataFrame
+    Args:
+        city_name (str): city for which data is returned (from cities list).
+
+    Returns:
+        pandas.core.frame.DataFrame: dataframe (fires + weather).
     """
     stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name="Sheet1", usecols=statistic_cols.keys(),
                              dtype=statistic_cols)
@@ -170,8 +171,8 @@ def plot_trends(city_name: str):
     Function for plotting graphs with trends for a specified city. Brings data to a scale from 0 to 100 and plots.
     Needed to visualization and explore the dependence of fires on weather data.
 
-    param city_name: city for which graphs are plotting (name from cities list)
-    type city_name: str
+    Args:
+        city_name: city for which graphs are plotting (from cities list).
     """
     data = get_full_data(city_name)
     x = data['Year'].tolist()
@@ -204,12 +205,11 @@ def get_regression_regularity(data: pandas.core.frame.DataFrame, indicator='Area
     Function for correlation analysis. Allows to explore the dependence of the selected indicator
     (fires area, forest fires area, fires number) on the values of the accumulated temperature and precipitations.
     Results are displayed on the screen as polynomial coefficient values. Functions fires_number_extrapolation_func
-    and fires_area_extrapolation_func are created based on the results of this function
+    and fires_area_extrapolation_func are created based on the results of this function.
 
-    param data: dataframe (fires + weather)
-    type data: pandas.core.frame.DataFrame
-    param indicator: indicator for which regression analysis is performed
-    type indicator: str
+    Args:
+        data (pandas.core.frame.DataFrame): dataframe (fires + weather).
+        indicator (str): indicator for which regression analysis is performed.
     """
     logger.info(indicator)
     x, y = np.array(data['Accumulated temperature']), np.array(data['Accumulated precipitations (2 years)'])
@@ -224,20 +224,35 @@ def get_regression_regularity(data: pandas.core.frame.DataFrame, indicator='Area
 
 def fires_number_extrapolation_func(x, a, b, c):
     """
-    Extrapolation function for the number of fires
+    Extrapolation function for the number of fires.
 
-    param x: list with temperature and precipitations values
-    type x: list
+    Args:
+        x (list): list with temperature and precipitations values.
+        a (float): polynomial coefficient.
+        b (float): polynomial coefficient.
+        c (float): polynomial coefficient.
+
+    Returns:
+        float: function value.
     """
     return a + b * x[0] + c * x[1]
 
 
 def fires_area_extrapolation_func(x, a, b, c, d, e, f):
     """
-    Extrapolation function for the area of fires
+    Extrapolation function for the area of fires.
 
-    param x: list with temperatures and precipitations values
-    type x: list
+    Args:
+        x (list): list with temperature and precipitations values.
+        a (float): polynomial coefficient.
+        b (float): polynomial coefficient.
+        c (float): polynomial coefficient.
+        d (float): polynomial coefficient.
+        e (float): polynomial coefficient.
+        f (float): polynomial coefficient.
+
+    Returns:
+        float: function value.
     """
     return a + b * x[0] + c * x[1] + d * x[0] * x[1] + e * (x[0] ** 2) + f * (x[1] ** 2)
 
@@ -246,12 +261,11 @@ def get_forecasts(city_name: str, show_last_year=False):
     """
     The function of obtaining forecasts. For each city from the cities list, three forecasts are generated:
     for the total area covered by fire, for the forest area covered by fire, for the number of fires.
-    The result is graphs and xlsx-report with initial data and forecast
+    The result is graphs and xlsx-report with initial data and forecast.
 
-    param city_name: city for which forecast is returned (name from cities list)
-    type city_name: str
-    param show_last_year: if the source data contains a value for the forecast year, then it will be included
-    type show_last_year: bool
+    Args:
+        city_name (str): city for which forecast is returned (from cities list).
+        show_last_year (bool): if the source data contains a value for the forecast year, then it will be included.
     """
     df = get_full_data(city_name)
     precipitations_2years = []
@@ -259,7 +273,7 @@ def get_forecasts(city_name: str, show_last_year=False):
     for k in range(len(df) - 1, -1, -1):
         if k > 0:
             precipitations_2years.insert(0, df.iloc[k]['Accumulated precipitations'] +
-                                     df.iloc[k - 1]['Accumulated precipitations'])
+                                         df.iloc[k - 1]['Accumulated precipitations'])
         else:
             precipitations_2years.insert(0, 2 * df.iloc[k]['Accumulated precipitations'])
     df['Accumulated precipitations (2 years)'] = precipitations_2years
@@ -302,7 +316,7 @@ def get_forecasts(city_name: str, show_last_year=False):
         df[f"Forecast {indicator}"] = [round(x) for x in p]
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city_name}/forecast.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Forecast', header=True, index=False)
-    writer = utils.format_xlsx(writer, df, 'c'*len(df.columns), sheet_name='Forecast')
+    writer = utils.format_xlsx(writer, df, 'c' * len(df.columns), sheet_name='Forecast')
     writer.save()
 
 
@@ -313,7 +327,8 @@ def test():
                                   'Accumulated precipitations', 'Accumulated precipitations (2 years)'],
                          dtype={'Number (units)': 'int32', 'Area (ha)': 'float32', 'Forest area (ha)': 'float32',
                                 'Year': 'int32', 'Accumulated temperature': 'float32',
-                                'Accumulated precipitations': 'float32', 'Accumulated precipitations (2 years)': 'float32'})
+                                'Accumulated precipitations': 'float32',
+                                'Accumulated precipitations (2 years)': 'float32'})
     get_regression_regularity(data, 'Number (units)')
     get_regression_regularity(data, 'Area (ha)')
     get_regression_regularity(data, 'Forest area (ha)')
