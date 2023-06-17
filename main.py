@@ -14,14 +14,11 @@ from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
 from sklearn.preprocessing import MinMaxScaler
 
-import sys
-
-sys.path.append('../')
-import utils
+from utils import create_or_clean_dir, crop_image, format_xlsx, get_tick_bounds
 
 mpl.rcParams.update({'font.size': 14})
-pd.set_option("display.precision", 2)
-pd.set_option('max_columns', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
 
 WINDOW_SIZE = 7
 HTTP_REQUEST_COUNT = 3
@@ -130,9 +127,9 @@ def get_weather_data(city_name: str, start_year=2000, end_year=2021):
         time.sleep(HTTP_REQUEST_DELAY)
     df_temperatures.to_excel(excel_writer=writer, sheet_name='Temperature', header=True, index=False)
     df_precipitations.to_excel(excel_writer=writer, sheet_name='Precipitations', header=True, index=False)
-    writer = utils.format_xlsx(writer, df_temperatures, 'c' * (end_year - start_year + 1), 'Temperature')
-    writer = utils.format_xlsx(writer, df_temperatures, 'c' * (end_year - start_year + 1), 'Precipitations')
-    writer.save()
+    writer = format_xlsx(writer, df_temperatures, 'c' * (end_year - start_year + 1), 'Temperature')
+    writer = format_xlsx(writer, df_temperatures, 'c' * (end_year - start_year + 1), 'Precipitations')
+    writer.close()
     return 0
 
 
@@ -147,16 +144,18 @@ def get_full_data(city_name: str):
     Returns:
         pandas.core.frame.DataFrame: dataframe (fires + weather).
     """
-    stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name="Sheet1", usecols=statistic_cols.keys(),
-                             dtype=statistic_cols)
-    df_temperatures = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name="Temperature")
-    sum_df_temperature = df_temperatures.loc[(df_temperatures['Month'] >= 5) & (df_temperatures['Month'] <= 8)] \
+    stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
+                             usecols=list(statistic_cols.keys()), dtype=statistic_cols, engine='openpyxl')
+    df_temperatures = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name='Temperature',
+                                    engine='openpyxl')
+    sum_df_temperature = df_temperatures.loc[(df_temperatures['Month'].between(5, 8, inclusive='both'))] \
         .sum(axis=0, skipna=True).reset_index()
     sum_df_temperature.columns = ['Year', 'Accumulated temperature']
     sum_df_temperature.drop(index=0, axis=0, inplace=True)
     sum_df_temperature.reset_index(inplace=True)
-    df_precipitations = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name="Precipitations")
-    sum_df_precipitations = df_precipitations.loc[(df_precipitations['Month'] >= 5) & (df_precipitations['Month'] <= 8)] \
+    df_precipitations = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name='Precipitations',
+                                      engine='openpyxl')
+    sum_df_precipitations = df_precipitations.loc[(df_precipitations['Month'].between(5, 8, inclusive='both'))] \
         .sum(axis=0, skipna=True).reset_index()
     sum_df_precipitations.columns = ['Year', 'Accumulated precipitations']
     sum_df_precipitations.drop(index=0, axis=0, inplace=True)
@@ -191,13 +190,13 @@ def plot_trends(city_name: str):
     plt.plot(x, y2, color='blue', linestyle='solid', lw=2, label='Accumulated precipitations from May to August')
     plt.plot(x, y3, color='green', linestyle='solid', lw=2, label='Fire area (ha)')
     maxvalue = max(max(y1), max(y2), max(y3))
-    b = utils.get_tick_bounds(maxvalue, 0)
+    b = get_tick_bounds(maxvalue, 0)
     plt.xticks(x, fontsize=14)
     plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
     plt.grid(axis='both', linestyle='--')
     plt.legend(loc='upper left', fontsize=24)
     fig.savefig('img.png')
-    utils.crop_image('img.png', f"{OUTPUT_PATH}/{city_name}/trends.png")
+    crop_image('img.png', f"{OUTPUT_PATH}/{city_name}/trends.png")
 
 
 def get_regression_regularity(data: pandas.core.frame.DataFrame, indicator='Area (ha)'):
@@ -219,7 +218,7 @@ def get_regression_regularity(data: pandas.core.frame.DataFrame, indicator='Area
     a = np.array([x * 0 + 1, x, y, x * y, x ** 2, y ** 2, (x ** 2) * y, x * (y ** 2), (x ** 2) * (y ** 2)]).T
     b = z.flatten()
     coeff, r, rank, s = np.linalg.lstsq(a, b, rcond=None)
-    logger.info('\t', list(map(lambda x: round(x, 6), coeff)))
+    logger.info('\t', [round(x, 6) for x in coeff])
 
 
 def fires_number_extrapolation_func(x, a, b, c):
@@ -304,31 +303,35 @@ def get_forecasts(city_name: str, show_last_year=False):
         r2 = round(r2_score(y, p), 2)
         plt.plot(years, p, color='green', linestyle='solid', lw=2, label=f"Forecast  R² = {r2}")
         maxvalue = max(max(y), max(p))
-        b = utils.get_tick_bounds(maxvalue, 0)
+        b = get_tick_bounds(maxvalue, 0)
         plt.xticks(years, fontsize=14)
         plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
         plt.gca().ticklabel_format(axis='y', style='plain', useOffset=False)
         plt.grid(axis='both', linestyle='--')
         plt.legend(loc='upper left', fontsize=24)
         fig.savefig('img.png')
-        utils.crop_image('img.png', f"{OUTPUT_PATH}/{city_name}/forecast_{indicator.lower().split(' (')[0]}.png")
+        crop_image('img.png', f"{OUTPUT_PATH}/{city_name}/forecast_{indicator.lower().split(' (')[0]}.png")
         logger.info(f"\t{indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
         df[f"Forecast {indicator}"] = [round(x) for x in p]
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city_name}/forecast.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Forecast', header=True, index=False)
-    writer = utils.format_xlsx(writer, df, 'c' * len(df.columns), sheet_name='Forecast')
-    writer.save()
+    writer = format_xlsx(writer, df, 'c' * len(df.columns), sheet_name='Forecast')
+    writer.close()
 
 
 def test():
     city_name = 'Khanty-Mansiysk'
+    test_cols = {
+        "Number (units)": "int32",
+        "Area (ha)": "float32",
+        "Forest area (ha)": "float32",
+        "Year": "int32",
+        "Accumulated temperature": "float32",
+        "Accumulated precipitations": "float32",
+        "Accumulated precipitations (2 years)": "float32"
+    }
     data = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name="Sheet1",
-                         usecols=['Number (units)', 'Area (ha)', 'Forest area (ha)', 'Year', 'Accumulated temperature',
-                                  'Accumulated precipitations', 'Accumulated precipitations (2 years)'],
-                         dtype={'Number (units)': 'int32', 'Area (ha)': 'float32', 'Forest area (ha)': 'float32',
-                                'Year': 'int32', 'Accumulated temperature': 'float32',
-                                'Accumulated precipitations': 'float32',
-                                'Accumulated precipitations (2 years)': 'float32'})
+                         usecols=list(test_cols.keys()), dtype=test_cols, engine="openpyxl")
     get_regression_regularity(data, 'Number (units)')
     get_regression_regularity(data, 'Area (ha)')
     get_regression_regularity(data, 'Forest area (ha)')
@@ -337,9 +340,9 @@ def test():
 if __name__ == '__main__':
     start_time = time.time()
     logger.info("Started...")
-    utils.create_clean_dir(OUTPUT_PATH)
+    create_or_clean_dir(OUTPUT_PATH)
     for city in cities:
-        utils.create_clean_dir(f"{OUTPUT_PATH}/{city}")
+        create_or_clean_dir(f"{OUTPUT_PATH}/{city}")
         logger.info(city)
         if get_weather_data(city) == 0:
             plot_trends(city)
