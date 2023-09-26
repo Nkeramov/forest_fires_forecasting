@@ -1,6 +1,5 @@
 import re
 import time
-import logging
 import requests
 import numpy as np
 import pandas as pd
@@ -14,18 +13,20 @@ from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
 from sklearn.preprocessing import MinMaxScaler
 
-from utils import create_or_clean_dir, crop_image, format_xlsx, get_tick_bounds
+from utils import clean_or_create_dir, crop_image, format_xlsx, get_tick_bounds
+from logging_utils import get_logger
 
 mpl.rcParams.update({'font.size': 14})
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-WINDOW_SIZE = 7
-HTTP_REQUEST_COUNT = 3
+HTTP_REQUEST_TIMEOUT = 10
 HTTP_REQUEST_DELAY = 0.25
 HTTP_REQUEST_RETRY_DELAY = 3
+HTTP_RETRIES_COUNT = 3
 INPUT_PATH = './input'
 OUTPUT_PATH = './output'
+WINDOW_SIZE = 7
 IMG_WIDTH, IMG_HEIGHT, IMG_DPI = 3600, 2000, 150
 FLOAT_NUMBER_REGEX = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
 # weather site url
@@ -46,20 +47,11 @@ statistic_cols = {
     'Year': 'int32'
 }
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-file = logging.FileHandler("forecast.log", mode='w')
-file.setLevel(logging.INFO)
-fileformat = logging.Formatter("%(asctime)s : %(levelname)s : %(message)s", datefmt="%H:%M:%S")
-file.setFormatter(fileformat)
-logger.addHandler(file)
-
-stream = logging.StreamHandler()
-stream.setLevel(logging.INFO)
-streamformat = logging.Formatter("%(asctime)s : %(levelname)s : %(message)s", datefmt="%H:%M:%S")
-stream.setFormatter(streamformat)
-logger.addHandler(stream)
+LOG_LEVEL = "INFO"
+LOG_MSG_FORMAT = "%(asctime)s : %(levelname)s : %(message)s"
+LOG_DATE_FORMAT = "%H:%M:%S"
+LOG_FILENAME = "forecast.log"
+logger = get_logger(LOG_LEVEL, LOG_MSG_FORMAT, LOG_DATE_FORMAT, LOG_FILENAME)
 
 
 def get_weather_data(city_name: str, start_year=2000, end_year=2021):
@@ -82,19 +74,14 @@ def get_weather_data(city_name: str, start_year=2000, end_year=2021):
     temperatures = []
     precipitations = []
     ua = UserAgent()
-    for (year, month) in tqdm(times, total=len(times), colour='green', desc="\tRetrieving weather data", position=0,
+    for (year, month) in tqdm(times, total=len(times), colour='green', desc=f"\tRetrieving weather data "
+                                                                            f"for {city_name}", position=0,
                               leave=True, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"):
-        for k in range(HTTP_REQUEST_COUNT):
+        for k in range(HTTP_RETRIES_COUNT):
             try:
-                payload = {
-                    'id': cities[city_name],
-                    'month': month,
-                    'year': year
-                }
-                header = {
-                    'User-Agent': ua.random
-                }
-                response = requests.get(WEATHER_URl, headers=header, params=payload)
+                payload = {'id': cities[city_name], 'month': month, 'year': year}
+                header = {'User-Agent': ua.random}
+                response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT)
                 if response.status_code == 200:
                     response.encoding = 'utf-8'
                     soup = BeautifulSoup(response.text, 'lxml')
@@ -108,16 +95,17 @@ def get_weather_data(city_name: str, start_year=2000, end_year=2021):
                 else:
                     time.sleep(HTTP_REQUEST_RETRY_DELAY)
             except requests.exceptions.HTTPError as err:
-                logger.error(f"\tHTTP error, year={year}, month={month}, {err}")
-                return -1
+                logger.warning(f"\tHTTP error, {city_name} {month}.{year}, {err}. Retrying...")
             except requests.exceptions.ConnectionError as err:
-                logger.error(f"\tConnection error, year={year}, month={month}, {err}")
-                return -1
+                logger.warning(f"\tConnection error, {city_name} {month}.{year}, {err}. Retrying...")
             except requests.exceptions.Timeout as err:
-                logger.error(f"\tTimeout error, year={year}, month={month}, {err}")
-                return -1
-            except requests.exceptions.RequestException as err:
-                logger.error(f"\tAnother request error, year={year}, month={month}, {err}")
+                logger.warning(f"\tTimeout error, {city_name} {month}.{year}, {err}. Retrying...")
+            except requests.exceptions.RequestException | Exception as err:
+                logger.warning(f"\tError, {city_name} {month}.{year}, {err}. Retrying...")
+            if k < HTTP_RETRIES_COUNT - 1:
+                time.sleep(HTTP_REQUEST_RETRY_DELAY)
+            else:
+                logger.error(f"\tError, {city_name} {month}.{year}. Maximum number of request retries reached")
                 return -1
         if month == 12:
             df_temperatures[str(year)] = temperatures
@@ -144,15 +132,18 @@ def get_full_data(city_name: str):
     Returns:
         pandas.core.frame.DataFrame: dataframe (fires + weather).
     """
-    stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
-                             usecols=list(statistic_cols.keys()), dtype=statistic_cols, engine='openpyxl')
+    stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", names=list(statistic_cols.keys()), dtype=statistic_cols,
+                             sheet_name='Sheet1', engine='openpyxl')
     df_temperatures = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name='Temperature',
                                     engine='openpyxl')
+
     sum_df_temperature = df_temperatures.loc[(df_temperatures['Month'].between(5, 8, inclusive='both'))] \
         .sum(axis=0, skipna=True).reset_index()
+
     sum_df_temperature.columns = ['Year', 'Accumulated temperature']
     sum_df_temperature.drop(index=0, axis=0, inplace=True)
     sum_df_temperature.reset_index(inplace=True)
+
     df_precipitations = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name='Precipitations',
                                       engine='openpyxl')
     sum_df_precipitations = df_precipitations.loc[(df_precipitations['Month'].between(5, 8, inclusive='both'))] \
@@ -160,8 +151,8 @@ def get_full_data(city_name: str):
     sum_df_precipitations.columns = ['Year', 'Accumulated precipitations']
     sum_df_precipitations.drop(index=0, axis=0, inplace=True)
     sum_df_precipitations.reset_index(inplace=True)
-    stats_df['Accumulated temperature'] = sum_df_temperature['Accumulated temperature']
-    stats_df['Accumulated precipitations'] = sum_df_precipitations['Accumulated precipitations']
+    stats_df['Accumulated temperature'] = list(sum_df_temperature['Accumulated temperature'])
+    stats_df['Accumulated precipitations'] = list(sum_df_precipitations['Accumulated precipitations'])
     return stats_df.copy()
 
 
@@ -221,28 +212,28 @@ def get_regression_regularity(data: pandas.core.frame.DataFrame, indicator='Area
     logger.info('\t', [round(x, 6) for x in coeff])
 
 
-def fires_number_extrapolation_func(x, a, b, c):
+def fires_number_extrapolation_func(x: list, a: float, b: float, c: float) -> list:
     """
     Extrapolation function for the number of fires.
 
     Args:
-        x (list): list with temperature and precipitations values.
+        x (list): list with temperature and precipitations values (lists).
         a (float): polynomial coefficient.
         b (float): polynomial coefficient.
         c (float): polynomial coefficient.
 
     Returns:
-        float: function value.
+        list: function values.
     """
     return a + b * x[0] + c * x[1]
 
 
-def fires_area_extrapolation_func(x, a, b, c, d, e, f):
+def fires_area_extrapolation_func(x: list, a: float, b: float, c: float, d: float, e: float, f: float) -> list:
     """
     Extrapolation function for the area of fires.
 
     Args:
-        x (list): list with temperature and precipitations values.
+        x (list): list with temperature and precipitations values (lists).
         a (float): polynomial coefficient.
         b (float): polynomial coefficient.
         c (float): polynomial coefficient.
@@ -251,7 +242,7 @@ def fires_area_extrapolation_func(x, a, b, c, d, e, f):
         f (float): polynomial coefficient.
 
     Returns:
-        float: function value.
+        list: function values.
     """
     return a + b * x[0] + c * x[1] + d * x[0] * x[1] + e * (x[0] ** 2) + f * (x[1] ** 2)
 
@@ -283,9 +274,9 @@ def get_forecasts(city_name: str, show_last_year=False):
              np.array(df['Accumulated precipitations (2 years)'], dtype=np.float64)]
         y = np.array(df[indicator], dtype=np.float64)
         if indicator in ['Forest area (ha)', 'Area (ha)']:
-            popt, pcov = curve_fit(fires_area_extrapolation_func, x, y, maxfev=100000)
+            popt, pcov = curve_fit(fires_area_extrapolation_func, x, y, maxfev=100000)[:2]
         else:
-            popt, pcov = curve_fit(fires_number_extrapolation_func, x, y, maxfev=100000)
+            popt, pcov = curve_fit(fires_number_extrapolation_func, x, y, maxfev=100000)[:2]
         fig = plt.figure(dpi=IMG_DPI, figsize=(IMG_WIDTH / IMG_DPI, IMG_HEIGHT / IMG_DPI))
         plt.clf()
         plt.title("Statistics and forecast for natural fires in Khanty-Mansi Autonomous Okrug-Yugra "
@@ -311,7 +302,7 @@ def get_forecasts(city_name: str, show_last_year=False):
         plt.legend(loc='upper left', fontsize=24)
         fig.savefig('img.png')
         crop_image('img.png', f"{OUTPUT_PATH}/{city_name}/forecast_{indicator.lower().split(' (')[0]}.png")
-        logger.info(f"\t{indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
+        logger.info(f"\t{city_name} {indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
         df[f"Forecast {indicator}"] = [round(x) for x in p]
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city_name}/forecast.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Forecast', header=True, index=False)
@@ -330,8 +321,8 @@ def test():
         "Accumulated precipitations": "float32",
         "Accumulated precipitations (2 years)": "float32"
     }
-    data = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", sheet_name="Sheet1",
-                         usecols=list(test_cols.keys()), dtype=test_cols, engine="openpyxl")
+    data = pd.read_excel(f"{OUTPUT_PATH}/{city_name}/weather.xlsx", names=list(test_cols.keys()), dtype=test_cols,
+                         sheet_name="Sheet1", engine="openpyxl")
     get_regression_regularity(data, 'Number (units)')
     get_regression_regularity(data, 'Area (ha)')
     get_regression_regularity(data, 'Forest area (ha)')
@@ -340,10 +331,9 @@ def test():
 if __name__ == '__main__':
     start_time = time.time()
     logger.info("Started...")
-    create_or_clean_dir(OUTPUT_PATH)
+    clean_or_create_dir(OUTPUT_PATH)
     for city in cities:
-        create_or_clean_dir(f"{OUTPUT_PATH}/{city}")
-        logger.info(city)
+        clean_or_create_dir(f"{OUTPUT_PATH}/{city}")
         if get_weather_data(city) == 0:
             plot_trends(city)
             get_forecasts(city, True)

@@ -1,4 +1,3 @@
-
 import os
 import cv2
 import shutil
@@ -21,7 +20,7 @@ def clear_dir(path):
             shutil.rmtree(entry.path)
 
 
-def create_or_clean_dir(path):
+def clean_or_create_dir(path):
     """
     Function to create an empty directory, if the directory exists it is cleared
 
@@ -34,7 +33,7 @@ def create_or_clean_dir(path):
         os.mkdir(path)
 
 
-def crop_image(old_filename, new_filename):
+def crop_image(old_filename: str, new_filename: str):
     """
     Function for cropping images with graphs (white margins are cropped)
 
@@ -54,7 +53,8 @@ def crop_image(old_filename, new_filename):
     im_buf_arr.tofile(new_filename)
 
 
-def format_xlsx(writer, df, alignments, sheet_name='Sheet1', line_height=20):
+def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet_name: str = 'Sheet1',
+                line_height: int = 20) -> pd.ExcelWriter:
     """
     Function for formatting an object of type XlsxWriter
 
