@@ -1,12 +1,12 @@
 import os
 import cv2
+import math
 import shutil
 import numpy as np
 import pandas as pd
-from math import floor, ceil
 
 
-def clear_dir(path):
+def clear_dir(path: str):
     """
     Function for recursively clearing a directory (removing all nested files)
 
@@ -20,7 +20,7 @@ def clear_dir(path):
             shutil.rmtree(entry.path)
 
 
-def clean_or_create_dir(path):
+def clean_or_create_dir(path: str):
     """
     Function to create an empty directory, if the directory exists it is cleared
 
@@ -56,12 +56,13 @@ def crop_image(old_filename: str, new_filename: str):
 def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet_name: str = 'Sheet1',
                 line_height: int = 20) -> pd.ExcelWriter:
     """
-    Function for formatting an object of type XlsxWriter
+    Function for formatting an object of XlsxWriter type.
+    Allows to set alignment for each column and adjust cells height.
 
     Args:
-        param writer (pandas.io.excel._xlsxwriter._XlsxWriter): object of type XlsxWriter
+        param writer (pandas.io.excel._xlsxwriter._XlsxWriter): object of XlsxWriter type
         param df (pandas.core.frame.DataFrame): pandas dataframe with data
-        param alignments (str): string indicating column alignment (r, l, c, j)
+        param alignments (str): string indicating columns alignments (r, l, c, j)
         param sheet_name (str): sheet name
         param line_height (int): cell height
     """
@@ -76,25 +77,26 @@ def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet
         cell_format = workbook.add_format()
         cell_format.set_align(a[alignments[i]])
         worksheet.set_column(i, i, hw, cell_format)
-    # set cell height
+    # set cells height
     for i in range(len(df) + 1):
         worksheet.set_row(i, line_height)
     return writer
 
 
-def get_tick_bounds(max_val, min_val=0):
+def get_tick_bounds(max_val: float, min_val=0):
     """
-    Function for generating a list of labels on the chart axis.
-    The label step is calculated from the value range, and the number of labels is calculated from the step.
+    Dummy function for generating a list of labels on the chart axis.
+    The labels step is calculated from the value min and max values on the chart.
+    The number of labels is calculated from the step.
 
     Args:
-        param max_val (float): maximum value of quantity
-        param min_val (float): maximum value of quantity
+        param max_val (float): max value on the chart
+        param min_val (float): min value on the chart
 
     Returns:
-        list: list of values [min, max, number of labels]
+        list: list of values [min value, max value, number of labels]
     """
-    min_val, max_val = floor(min_val), ceil(max_val)
+    min_val, max_val = math.floor(min_val), math.ceil(max_val)
     dif = max_val - min_val
     if dif > 10000000:
         step = 1000000

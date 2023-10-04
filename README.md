@@ -1,10 +1,14 @@
 # Yugra forest fires forecasting
 
+<div align="center">
+    <img src="title.jpg" height="300">
+</div>
+
 ## Description
 
 This project presents an example of solving a data prediction problem using regression and correlation analysis.
 
-Based on data on natural fires from 2000 to 2019 in the Khanty-Mansiysk Autonomous Okrug-Yugra, forecasted the number of fires, the total area of fires, and the total area of forest fires.
+Based on data on natural fires from 2000 to 2019 in the Khanty-Mansi Autonomous Okrug-Yugra, forecasted the number of fires, the total area of fires, and the total area of forest fires.
 
 This forecast was not intended to predict the occurrence of fires in a particular area. The purpose of the forecast was to estimate the total area without reference to territories. This was required by the local authorities of the region to plan the amount of funding for extinguishing natural fires at the beginning of the calendar year, that is, long before the start of the fire season in the region (May-August).
 
