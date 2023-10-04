@@ -13,7 +13,7 @@ from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
 from sklearn.preprocessing import MinMaxScaler
 
-from utils import clean_or_create_dir, crop_image, format_xlsx, get_tick_bounds
+from utils import clear_or_create_dir, crop_image, format_xlsx, get_tick_bounds
 from logging_utils import get_logger
 
 mpl.rcParams.update({'font.size': 14})
@@ -332,9 +332,9 @@ def test():
 if __name__ == '__main__':
     start_time = time.time()
     logger.info("Started...")
-    clean_or_create_dir(OUTPUT_PATH)
+    clear_or_create_dir(OUTPUT_PATH)
     for city in cities:
-        clean_or_create_dir(f"{OUTPUT_PATH}/{city}")
+        clear_or_create_dir(f"{OUTPUT_PATH}/{city}")
         if get_weather_data(city) == 0:
             plot_trends(city)
             get_forecasts(city, True)
