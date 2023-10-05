@@ -11,7 +11,7 @@ def clear_dir(path: str | os.PathLike):
     Function for recursively clearing a directory (removing all nested files)
 
     Args:
-        param path (str): directory path
+        path: directory path
     """
     for entry in os.scandir(path):
         if not entry.name.startswith('.') and entry.is_file():
@@ -25,7 +25,7 @@ def clear_or_create_dir(path: str | os.PathLike):
     Function to create an empty directory, if the directory exists it is cleared
 
     Args:
-        param path: directory path
+        path: directory path
     """
     if os.path.exists(path):
         clear_dir(path)
@@ -33,13 +33,13 @@ def clear_or_create_dir(path: str | os.PathLike):
         os.mkdir(path)
 
 
-def crop_image(old_filename: str, new_filename: str):
+def crop_image(old_filename: str | os.PathLike, new_filename: str | os.PathLike):
     """
     Function for cropping images with graphs (white margins are cropped)
 
     Args:
-        param old_filename: path to source image
-        param new_filename: path to new (cropped) image
+        old_filename: path to source image
+        new_filename: path to new (cropped) image
     """
     img = cv2.imread(old_filename)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -60,11 +60,11 @@ def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet
     Allows to set alignment for each column and adjust cells height.
 
     Args:
-        param writer: object of XlsxWriter type
-        param df: pandas dataframe with data
-        param alignments: string indicating columns alignments (r, l, c, j)
-        param sheet_name: sheet name
-        param line_height: cell height
+        writer: object of XlsxWriter type
+        df: pandas dataframe with data
+        alignments: string indicating columns alignments (r, l, c, j)
+        sheet_name: sheet name
+        line_height: cell height
     """
     workbook = writer.book
     worksheet = writer.sheets[sheet_name]
@@ -90,8 +90,8 @@ def get_tick_bounds(max_val: float, min_val=0):
     The number of labels is calculated from the step.
 
     Args:
-        param max_val: max value on the chart
-        param min_val: min value on the chart
+        max_val: max value on the chart
+        min_val: min value on the chart
 
     Returns:
         list: list of values [min value, max value, number of labels]
