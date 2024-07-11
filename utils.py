@@ -1,39 +1,73 @@
-import os
 import cv2
 import math
-import shutil
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 
-def clear_dir(path: str | os.PathLike):
+def recursive_rmdir(dir_path: str | Path):
     """
-    Function for recursively clearing a directory (removing all nested files)
+    Function for recursively clearing a directory (removing all nested files and dirs)
 
     Args:
-        path: directory path
+        dir_path: path to the directory that will be cleared
     """
-    for entry in os.scandir(path):
-        if not entry.name.startswith('.') and entry.is_file():
-            os.unlink(entry.path)
-        elif not entry.name.startswith('.') and entry.is_dir():
-            shutil.rmtree(entry.path)
+    try:
+        path = Path(dir_path)
+        if path.is_dir():
+            for entry in path.iterdir():
+                if entry.is_file():
+                    entry.unlink()
+                else:
+                    recursive_rmdir(entry)
+        path.rmdir()
+    except PermissionError as e:
+        print(f"Insufficient rights to delete. Error message: {e}")
+    except FileNotFoundError:
+        print(f"File not found: {dir_path}")
 
 
-def clear_or_create_dir(path: str | os.PathLike):
+def clear_dir(dir_path: str | Path):
     """
-    Function to create an empty directory, if the directory exists it is cleared
+    Function for recursively clearing a directory (removing all nested files and dirs)
 
     Args:
-        path: directory path
+        dir_path: path to the directory that will be cleared
     """
-    if os.path.exists(path):
-        clear_dir(path)
-    else:
-        os.mkdir(path)
+    try:
+        path = Path(dir_path)
+        if path.is_dir():
+            for entry in path.iterdir():
+                if entry.is_file():
+                    entry.unlink()
+                else:
+                    recursive_rmdir(entry)
+    except PermissionError as e:
+        print(f"Insufficient rights to delete. Error message: {e}")
+    except FileNotFoundError:
+        print(f"File not found: {dir_path}")
 
 
-def crop_image(old_filename: str | os.PathLike, new_filename: str | os.PathLike):
+def clear_or_create_dir(dir_path: str | Path):
+    """
+    Function to clear a directory or create a new one if the specified directory does not exist
+
+    Args:
+        dir_path: path to the directory that will be cleared or created
+    """
+    try:
+        path = Path(dir_path)
+        if path.is_dir():
+            clear_dir(path)
+        else:
+            path.mkdir(parents=False, exist_ok=True)
+    except PermissionError as e:
+        print(f"Insufficient rights to delete. Error message: {e}")
+    except FileNotFoundError:
+        print(f"File not found: {dir_path}")
+
+
+def crop_image(old_filename: str | Path, new_filename: str | Path):
     """
     Function for cropping images with graphs (white margins are cropped)
 
@@ -48,13 +82,13 @@ def crop_image(old_filename: str | os.PathLike, new_filename: str | os.PathLike)
     x, y, w, h = cv2.boundingRect(cords)
     padding = 15
     rect = img[y - padding: y + h + 2 * padding, x - padding: x + w + 2 * padding]
-    os.remove(old_filename)
     is_success, im_buf_arr = cv2.imencode(".png", rect)
     im_buf_arr.tofile(new_filename)
+    Path(old_filename).unlink()
 
 
-def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet_name: str = 'Sheet1',
-                line_height: int = 20) -> pd.ExcelWriter:
+def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None = None,
+                sheet_name: str = 'Sheet1', cell_height: int = 20) -> pd.ExcelWriter:
     """
     Function for formatting an object of XlsxWriter type.
     Allows to set alignment for each column and adjust cells height.
@@ -62,28 +96,28 @@ def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str, sheet
     Args:
         writer: object of XlsxWriter type
         df: pandas dataframe with data
-        alignments: string indicating columns alignments (r, l, c, j)
-        sheet_name: sheet name
-        line_height: cell height
+        alignments: string indicating columns alignments (r, l, c, j), default is left alignment for all columns
+        sheet_name: name of the sheet to be formatted
+        cell_height: cell height
     """
     workbook = writer.book
     worksheet = writer.sheets[sheet_name]
-    header_list = df.columns.values.tolist()
+    if alignments is None:
+        alignments = 'l' * df.shape[1]
     # set column width and alignment
     a = {'l': 'left', 'r': 'right', 'c': 'center', 'j': 'justify'}
-    for i in range(len(header_list)):
-        cw = max([len(str(r)) for r in df[header_list[i]]])
-        hw = max(len(header_list[i]), cw) + 5
+    for col_index, col_name in enumerate(df.columns):
+        col_width = max(len(col_name), max(len(str(r)) for r in df[col_name])) + 1
         cell_format = workbook.add_format()
-        cell_format.set_align(a[alignments[i]])
-        worksheet.set_column(i, i, hw, cell_format)
+        cell_format.set_align(a[alignments[col_index]])
+        worksheet.set_column(col_index, col_index, col_width, cell_format)
     # set cells height
     for i in range(len(df) + 1):
-        worksheet.set_row(i, line_height)
+        worksheet.set_row(i, cell_height)
     return writer
 
 
-def get_tick_bounds(max_val: float, min_val=0):
+def get_tick_bounds(max_val: float, min_val: float = 0) -> list:
     """
     Dummy function for generating a list of labels on the chart axis.
     The labels step is calculated from the value min and max values on the chart.
