@@ -67,24 +67,30 @@ def clear_or_create_dir(dir_path: str | Path):
         print(f"File not found: {dir_path}")
 
 
-def crop_image(old_filename: str | Path, new_filename: str | Path):
+def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadding: int = 15,
+                             new_filename: str | Path | None = None) -> None:
     """
-    Function for cropping images with graphs (white margins are cropped)
+    Function for cropping images with graphs (white margins at the edges are cut off).
+    If a new filename is not passed, the original file will be overwritten
 
     Args:
-        old_filename: path to source image
-        new_filename: path to new (cropped) image
+        old_filename: number of bytes
+        xpadding: horizontal padding
+        ypadding: vertical padding
+        new_filename: path to the new (cropped) image
     """
     img = cv2.imread(old_filename)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = 255 * (gray < 128).astype(np.uint8)
     cords = cv2.findNonZero(gray)
     x, y, w, h = cv2.boundingRect(cords)
-    padding = 15
-    rect = img[y - padding: y + h + 2 * padding, x - padding: x + w + 2 * padding]
+    rect = img[y - ypadding: y + h + 2 * ypadding, x - xpadding: x + w + 2 * xpadding]
     is_success, im_buf_arr = cv2.imencode(".png", rect)
-    im_buf_arr.tofile(new_filename)
-    Path(old_filename).unlink()
+    if new_filename is None:
+        Path(old_filename).unlink()
+        im_buf_arr.tofile(old_filename)
+    else:
+        im_buf_arr.tofile(new_filename)
 
 
 def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None = None,

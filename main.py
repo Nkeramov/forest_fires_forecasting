@@ -4,6 +4,7 @@ import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from typing import Dict
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
@@ -12,7 +13,7 @@ from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
 from sklearn.preprocessing import MinMaxScaler
 
-from utils import clear_or_create_dir, crop_image, format_xlsx, get_tick_bounds
+from utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
 from logging_utils import get_logger
 
 mpl.rcParams.update({'font.size': 14})
@@ -36,14 +37,14 @@ FLOAT_NUMBER_REGEX = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
 
 
 # IDs of cities from weather site
-cities = {
+cities: Dict[str, int] = {
     'Khanty-Mansiysk': 23933,
     'October': 23734,
     'Leushi': 28064,
     'Lariak': 23867,
     'Ugut': 23946
 }
-statistic_cols = {
+statistic_cols: Dict[str, str] = {
     'Number (units)': 'int32',
     'Area (ha)': 'float32',
     'Forest area (ha)': 'float32',
@@ -189,8 +190,9 @@ def plot_trends(city: str):
     plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
     plt.grid(axis='both', linestyle='--')
     plt.legend(loc='upper left', fontsize=24)
-    fig.savefig('img.png')
-    crop_image('img.png', f"{OUTPUT_PATH}/{city}/trends.png")
+    filename = f"{OUTPUT_PATH}/{city}/trends.png"
+    fig.savefig(filename)
+    crop_image_white_margins(filename)
 
 
 def get_regression_regularity(df: pd.DataFrame, indicator='Area (ha)'):
@@ -304,8 +306,9 @@ def get_forecasts(city: str, show_last_year: bool = False):
         plt.gca().ticklabel_format(axis='y', style='plain', useOffset=False)
         plt.grid(axis='both', linestyle='--')
         plt.legend(loc='upper left', fontsize=24)
-        fig.savefig('img.png')
-        crop_image('img.png', f"{OUTPUT_PATH}/{city}/forecast_{indicator.lower().split(' (')[0]}.png")
+        filename = f"{OUTPUT_PATH}/{city}/forecast_{indicator.lower().split(' (')[0]}.png"
+        fig.savefig(filename)
+        crop_image_white_margins(filename)
         logger.info(f"\t{city} {indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
         df[f"Forecast {indicator}"] = [round(x) for x in p]
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city}/forecast.xlsx", engine='xlsxwriter')
