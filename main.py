@@ -1,22 +1,24 @@
 import re
 import time
+from pathlib import Path
+
 import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import Dict, NamedTuple, List
-from datetime import datetime
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
+from datetime import datetime
 from fake_useragent import UserAgent
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
-
+from typing import Dict, NamedTuple, List
 from sklearn.preprocessing import MinMaxScaler
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
 from libs.utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
-from libs.log_utils import get_logger
+from libs.log_utils import LoggerSingleton
 
 mpl.rcParams.update({'font.size': 14})
 
@@ -48,12 +50,12 @@ cities: List[City] = [
     City('Ugut', 23946)
 ]
 
-LOG_LEVEL = "INFO"
-LOG_MSG_FORMAT = "%(asctime)s : %(levelname)s : %(message)s"
-LOG_DATE_FORMAT = "%H:%M:%S"
-LOG_FILENAME = "forecast.log"
-logger = get_logger(LOG_LEVEL, LOG_MSG_FORMAT, LOG_DATE_FORMAT, LOG_FILENAME)
-
+logger = LoggerSingleton(
+    log_dir=Path('logs'),
+    log_file="forecast.log",
+    level="INFO",
+    colored=True
+).get_logger()
 
 def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool:
     """
@@ -66,7 +68,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
         date_to: date up to which data is obtained.
 
     Returns:
-        int: -1 if an error occurred and 0 if there were no errors.
+        bool: True if there were no errors and False otherwise.
     """
 
     def extract_weather_values(text: str) -> WeatherRecord:
@@ -127,8 +129,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
 
 def collect_data(city: City):
     """
-    Function to collect the complete dataset for a specified city.
-    Combines a dataset from fire statistics and a weather dataset.
+    Function to collect the complete dataset from fire statistics and a weather data for specified city.
 
     Args:
         city: city for which data is returned (from cities list).
@@ -254,7 +255,7 @@ def fires_area_extrapolation_func(x: list, a: float, b: float, c: float, d: floa
 
 def get_forecasts(city: City, show_last_year: bool = False):
     """
-    The function of obtaining forecasts. For each city from the cities list, three forecasts are generated:
+    Function of obtaining forecasts. For each city from the cities list, three forecasts are generated:
     for the total area covered by fire, for the forest area covered by fire, for the number of fires.
     The result is graphs and xlsx-report with initial data and forecast.
 
