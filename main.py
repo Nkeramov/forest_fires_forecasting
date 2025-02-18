@@ -4,12 +4,11 @@ import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import Dict
+from typing import Dict, NamedTuple, List
 from datetime import datetime
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
-from collections import namedtuple
 from fake_useragent import UserAgent
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
@@ -26,9 +25,6 @@ pd.set_option("display.precision", 2)
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
-WeatherRecord = namedtuple('WeatherRecord', ['temperature', 'precipitations'])
-City = namedtuple('City', ['name', 'id'])
-
 HTTP_RETRIES_COUNT = 3
 HTTP_REQUEST_DELAY = 0.25
 HTTP_REQUEST_TIMEOUT = 10
@@ -40,31 +36,23 @@ OUTPUT_PATH = './output'
 IMG_WIDTH, IMG_HEIGHT, IMG_DPI = 3600, 2000, 150
 WEATHER_URl = "http://pogodaiklimat.ru/monitor.php"
 
-
+WeatherRecord = NamedTuple('WeatherRecord', [('temperature', float), ('precipitations', float)])
+City = NamedTuple('City', [('name', str), ('id', int)])
 
 # IDs of cities from weather site
-cities: Dict[str, int] = {
-    'Khanty-Mansiysk': 23933,
-    # 'October': 23734,
-    # 'Leushi': 28064,
-    # 'Lariak': 23867,
-    # 'Ugut': 23946
-}
-statistic_cols: Dict[str, str] = {
-    'Number (units)': 'int32',
-    'Area (ha)': 'float32',
-    'Forest area (ha)': 'float32',
-    'Year': 'int32'
-}
+cities: List[City] = [
+    City('Khanty-Mansiysk', 23933),
+    City('October', 23734),
+    City('Leushi', 28064),
+    City('Lariak', 23867),
+    City('Ugut', 23946)
+]
 
 LOG_LEVEL = "INFO"
 LOG_MSG_FORMAT = "%(asctime)s : %(levelname)s : %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
 LOG_FILENAME = "forecast.log"
 logger = get_logger(LOG_LEVEL, LOG_MSG_FORMAT, LOG_DATE_FORMAT, LOG_FILENAME)
-
-
-
 
 
 def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool:
@@ -91,22 +79,14 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
         return WeatherRecord(fvalues[1], fvalues[4])
 
     data = []
-    # times = [(year, month) for year in range(year_from, year_to) for month in range(1, 13)]
-    dates = pd.date_range(date_from, date_to, freq='MS', inclusive='left')
     ua = UserAgent()
-    for date in tqdm(dates, total=len(dates), colour='green',
-                              desc=f"\tRetrieving weather data for {city}", position=0,
-                              leave=True, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"):
+    dates = pd.date_range(date_from, date_to, freq='MS', inclusive='left')
+    for date in tqdm(dates, total=len(dates), colour='green', desc=f"\tObtaining weather data for {city.name}",
+                     position=0, leave=True, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"):
         for k in range(HTTP_RETRIES_COUNT):
             try:
-                payload = {
-                    'id': city.id,
-                    'month': date.month,
-                    'year': date.year
-                }
-                header = {
-                    'User-Agent': ua.random
-                }
+                payload = {'id': city.id, 'month': date.month, 'year': date.year}
+                header = {'User-Agent': ua.random}
                 response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT)
                 if response.status_code == 200:
                     response.encoding = 'utf-8'
@@ -144,9 +124,9 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
     return True
 
 
-def get_full_data(city: str):
+def collect_data(city: City):
     """
-    A function to get the complete dataset for a specified city.
+    Function to collect the complete dataset for a specified city.
     Combines a dataset from fire statistics and a weather dataset.
 
     Args:
@@ -155,30 +135,29 @@ def get_full_data(city: str):
     Returns:
         pandas.core.frame.DataFrame: dataframe (fires + weather).
     """
-    stats_df = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
-                             usecols=list(statistic_cols.keys()), dtype=statistic_cols, engine='openpyxl')
-    df_temperatures = pd.read_excel(f"{OUTPUT_PATH}/{city}/weather.xlsx", sheet_name='Temperature',
-                                    engine='openpyxl')
-    sum_df_temperature = df_temperatures.loc[(df_temperatures['Month'].between(5, 8, inclusive='both'))] \
-        .sum(axis=0, skipna=True).reset_index()
+    statistic_cols: Dict[str, str] = {
+        'Number (units)': 'int32',
+        'Area (ha)': 'float32',
+        'Forest area (ha)': 'float32',
+        'Year': 'int32'
+    }
+    df_statistics = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
+                                  usecols=list(statistic_cols.keys()), dtype=statistic_cols)
+    df_weather = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", sheet_name='Data')
+    df_weather = (df_weather.loc[(df_weather['Month'].between(5, 8, inclusive='both'))]
+                          .groupby(by='Year', as_index=False).agg({'Temperature': 'sum', 'Precipitations': 'sum'}))
+    df_weather.rename(columns={
+        'Temperature': 'Season temperature sum',
+        'Precipitations': 'Season precipitations sum'
+    }, inplace=True)
+    previous_precipitation_sum = df_weather['Season precipitations sum'].shift(1)
+    df_weather['Two seasons precipitations sum'] = df_weather['Season precipitations sum'] + previous_precipitation_sum
+    df_weather.loc[0, 'Two seasons precipitations sum'] = 2 * df_weather.loc[0, 'Season precipitations sum']
+    df_statistics = df_statistics.merge(df_weather, on='Year', how='left', sort=True)
+    return df_statistics.copy()
 
-    sum_df_temperature.columns = ['Year', 'Accumulated temperature']
-    sum_df_temperature.drop(index=0, axis=0, inplace=True)
-    sum_df_temperature.reset_index(inplace=True)
 
-    df_precipitations = pd.read_excel(f"{OUTPUT_PATH}/{city}/weather.xlsx", sheet_name='Precipitations',
-                                      engine='openpyxl')
-    sum_df_precipitations = df_precipitations.loc[(df_precipitations['Month'].between(5, 8, inclusive='both'))] \
-        .sum(axis=0, skipna=True).reset_index()
-    sum_df_precipitations.columns = ['Year', 'Accumulated precipitations']
-    sum_df_precipitations.drop(index=0, axis=0, inplace=True)
-    sum_df_precipitations.reset_index(inplace=True)
-    stats_df['Accumulated temperature'] = sum_df_temperature['Accumulated temperature']
-    stats_df['Accumulated precipitations'] = sum_df_precipitations['Accumulated precipitations']
-    return stats_df.copy()
-
-
-def plot_trends(city: str):
+def plot_trends(city: City):
     """
     Function for plotting graphs with trends for a specified city. Brings data to a scale from 0 to 100 and plots.
     Needed to visualization and explore the dependence of fires on weather data.
@@ -186,7 +165,7 @@ def plot_trends(city: str):
     Args:
         city: city for which graphs are plotting (from cities list).
     """
-    data = get_full_data(city)
+    data = collect_data(city)
     x = data['Year'].tolist()
     data.drop(['Year'], axis=1, inplace=True)
     scaler = MinMaxScaler(feature_range=(0, 100))
@@ -197,19 +176,19 @@ def plot_trends(city: str):
               fontsize=24)
     plt.xlabel("year", fontsize=18)
     plt.ylabel("scaled value (from 0 to 100)", fontsize=18)
-    y1 = df_scaled['Accumulated temperature'].tolist()
-    y2 = df_scaled['Accumulated precipitations'].tolist()
+    y1 = df_scaled['Season temperature sum'].tolist()
+    y2 = df_scaled['Season precipitations sum'].tolist()
     y3 = df_scaled['Area (ha)'].tolist()
-    plt.plot(x, y1, color='red', linestyle='solid', lw=2, label='Accumulated temperature from May to August')
-    plt.plot(x, y2, color='blue', linestyle='solid', lw=2, label='Accumulated precipitations from May to August')
+    plt.plot(x, y1, color='red', linestyle='solid', lw=2, label='Season temperature sum (from May to August)')
+    plt.plot(x, y2, color='blue', linestyle='solid', lw=2, label='Season precipitations sum (from May to August)')
     plt.plot(x, y3, color='green', linestyle='solid', lw=2, label='Fire area (ha)')
     maxvalue = max(max(y1), max(y2), max(y3))
     b = get_tick_bounds(maxvalue, 0)
     plt.xticks(x, fontsize=14)
     plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
     plt.grid(axis='both', linestyle='--')
-    plt.legend(loc='upper left', fontsize=24)
-    filename = f"{OUTPUT_PATH}/{city}/trends.png"
+    plt.legend(loc='upper left', fontsize=18)
+    filename = f"{OUTPUT_PATH}/{city.name}/trends.png"
     fig.savefig(filename)
     crop_image_white_margins(filename)
 
@@ -272,7 +251,7 @@ def fires_area_extrapolation_func(x: list, a: float, b: float, c: float, d: floa
     return a + b * x[0] + c * x[1] + d * x[0] * x[1] + e * (x[0] ** 2) + f * (x[1] ** 2)
 
 
-def get_forecasts(city: str, show_last_year: bool = False):
+def get_forecasts(city: City, show_last_year: bool = False):
     """
     The function of obtaining forecasts. For each city from the cities list, three forecasts are generated:
     for the total area covered by fire, for the forest area covered by fire, for the number of fires.
@@ -282,21 +261,12 @@ def get_forecasts(city: str, show_last_year: bool = False):
         city: city for which forecast is returned (from cities list).
         show_last_year: if the source data contains a value for the forecast year, then it will be included.
     """
-    df = get_full_data(city)
-    precipitations_2years = []
-    # calculation of accumulated precipitations for the last two years
-    for k in range(len(df) - 1, -1, -1):
-        if k > 0:
-            precipitations_2years.insert(0, df.iloc[k]['Accumulated precipitations'] +
-                                         df.iloc[k - 1]['Accumulated precipitations'])
-        else:
-            precipitations_2years.insert(0, 2 * df.iloc[k]['Accumulated precipitations'])
-    df['Accumulated precipitations (2 years)'] = precipitations_2years
+    df = collect_data(city)
     years = df['Year'].tolist()
     indicators = ['Forest area (ha)', 'Area (ha)', 'Number (units)']
     for indicator in indicators:
-        x = [np.array(df['Accumulated temperature'], dtype=np.float64),
-             np.array(df['Accumulated precipitations (2 years)'], dtype=np.float64)]
+        x = [np.array(df['Season temperature sum'], dtype=np.float64),
+             np.array(df['Two seasons precipitations sum'], dtype=np.float64)]
         y = np.array(df[indicator], dtype=np.float64)
         if indicator in ['Forest area (ha)', 'Area (ha)']:
             popt, pcov = curve_fit(fires_area_extrapolation_func, x, y, maxfev=100000)[:2]
@@ -324,46 +294,45 @@ def get_forecasts(city: str, show_last_year: bool = False):
         plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
         plt.gca().ticklabel_format(axis='y', style='plain', useOffset=False)
         plt.grid(axis='both', linestyle='--')
-        plt.legend(loc='upper left', fontsize=24)
-        filename = f"{OUTPUT_PATH}/{city}/forecast_{indicator.lower().split(' (')[0]}.png"
+        plt.legend(loc='upper left', fontsize=18)
+        filename = f"{OUTPUT_PATH}/{city.name}/forecast_{indicator.lower().split(' (')[0]}.png"
         fig.savefig(filename)
         crop_image_white_margins(filename)
-        logger.info(f"\t{city} {indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
+        logger.info(f"\t{city.name} {indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
         df[f"Forecast {indicator}"] = [round(x) for x in p]
-    writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city}/forecast.xlsx", engine='xlsxwriter')
+    writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Forecast', header=True, index=False)
     writer = format_xlsx(writer, df, 'c' * len(df.columns), sheet_name='Forecast')
     writer.close()
 
 
 def test():
-    city = 'Khanty-Mansiysk'
+    city = cities[0]
     test_cols = {
         "Number (units)": "int32",
         "Area (ha)": "float32",
         "Forest area (ha)": "float32",
         "Year": "int32",
-        "Accumulated temperature": "float32",
-        "Accumulated precipitations": "float32",
-        "Accumulated precipitations (2 years)": "float32"
+        "Season temperature sum": "float32",
+        "Season precipitations sum": "float32",
+        "Two seasons precipitations sum": "float32"
     }
-    data = pd.read_excel(f"{OUTPUT_PATH}/{city}/weather.xlsx", sheet_name="Sheet1",
-                         usecols=list(test_cols.keys()), dtype=test_cols, engine="openpyxl")
+    data = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", sheet_name="Sheet1", usecols=list(test_cols))
     get_regression_regularity(data, 'Number (units)')
     get_regression_regularity(data, 'Area (ha)')
     get_regression_regularity(data, 'Forest area (ha)')
 
 
 if __name__ == '__main__':
-    start_time = time.time()
+    start_time = time.perf_counter()
     logger.info("Started...")
     clear_or_create_dir(OUTPUT_PATH)
     start_date = datetime(year=2000, month=1, day=1)
     end_date = datetime(year=2021, month=1, day=1)
-    for name, id in cities.items():
-        clear_or_create_dir(f"{OUTPUT_PATH}/{name}")
-        print(get_weather_data(City(name, id), start_date, end_date))
-        # if get_weather_data(city):
-        #     plot_trends(city)
-        #     get_forecasts(city, True)
-    logger.info(f"Done. Elapsed time {round((time.time() - start_time), 1)} seconds")
+    for city in cities:
+        clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
+        if get_weather_data(city, start_date, end_date):
+            plot_trends(city)
+            get_forecasts(city, True)
+    elapsed_time = time.perf_counter() - start_time
+    logger.info(f"Done. Elapsed time {elapsed_time:.1f} seconds")
