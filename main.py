@@ -5,12 +5,15 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from typing import Dict
+from datetime import datetime
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
+from collections import namedtuple
 from fake_useragent import UserAgent
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
+
 from sklearn.preprocessing import MinMaxScaler
 
 from utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
@@ -23,6 +26,9 @@ pd.set_option("display.precision", 2)
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
+WeatherRecord = namedtuple('WeatherRecord', ['temperature', 'precipitations'])
+City = namedtuple('City', ['name', 'id'])
+
 HTTP_RETRIES_COUNT = 3
 HTTP_REQUEST_DELAY = 0.25
 HTTP_REQUEST_TIMEOUT = 10
@@ -33,16 +39,16 @@ INPUT_PATH = './input'
 OUTPUT_PATH = './output'
 IMG_WIDTH, IMG_HEIGHT, IMG_DPI = 3600, 2000, 150
 WEATHER_URl = "http://pogodaiklimat.ru/monitor.php"
-FLOAT_NUMBER_REGEX = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
+
 
 
 # IDs of cities from weather site
 cities: Dict[str, int] = {
     'Khanty-Mansiysk': 23933,
-    'October': 23734,
-    'Leushi': 28064,
-    'Lariak': 23867,
-    'Ugut': 23946
+    # 'October': 23734,
+    # 'Leushi': 28064,
+    # 'Lariak': 23867,
+    # 'Ugut': 23946
 }
 statistic_cols: Dict[str, str] = {
     'Number (units)': 'int32',
@@ -58,71 +64,84 @@ LOG_FILENAME = "forecast.log"
 logger = get_logger(LOG_LEVEL, LOG_MSG_FORMAT, LOG_DATE_FORMAT, LOG_FILENAME)
 
 
-def get_weather_data(city: str, year_from: int = 2000, year_to: int = 2021) -> int:
+
+
+
+def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool:
     """
     Function for obtaining weather data for specified city.
     Two files are generated: average monthly temperatures and average monthly precipitations.
 
     Args:
-        city: city for which data is retrieved (name from cities list).
-        year_from: year from which data is retrieved.
-        year_to: year for which data is retrieved.
+        city: city for which data is obtained.
+        date_from: date from which data is obtained.
+        date_to: date up to which data is obtained.
 
     Returns:
         int: -1 if an error occurred and 0 if there were no errors.
     """
-    writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city}/weather.xlsx", engine='xlsxwriter')
-    df_temperatures = pd.DataFrame({'Month': range(1, 13)}, columns=['Month'])
-    df_precipitations = pd.DataFrame({'Month': range(1, 13)}, columns=['Month'])
-    times = [(year, month) for year in range(year_from, year_to) for month in range(1, 13)]
-    temperatures = []
-    precipitations = []
+
+    def extract_weather_values(text: str) -> WeatherRecord:
+        soup = BeautifulSoup(text, 'lxml')
+        tags = soup.find_all(['div'], class_='climate-text')
+        text = re.sub(r"\s+", " ", tags[1].text.strip())
+        float_number_regex = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
+        fvalues = [float(x) for x in re.findall(float_number_regex, text)]
+        # take the second and fifth value, this is determined by the markup of the site page
+        return WeatherRecord(fvalues[1], fvalues[4])
+
+    data = []
+    # times = [(year, month) for year in range(year_from, year_to) for month in range(1, 13)]
+    dates = pd.date_range(date_from, date_to, freq='MS', inclusive='left')
     ua = UserAgent()
-    for (year, month) in tqdm(times, total=len(times), colour='green',
+    for date in tqdm(dates, total=len(dates), colour='green',
                               desc=f"\tRetrieving weather data for {city}", position=0,
                               leave=True, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"):
         for k in range(HTTP_RETRIES_COUNT):
             try:
-                payload = {'id': cities[city], 'month': month, 'year': year}
-                header = {'User-Agent': ua.random}
+                payload = {
+                    'id': city.id,
+                    'month': date.month,
+                    'year': date.year
+                }
+                header = {
+                    'User-Agent': ua.random
+                }
                 response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT)
                 if response.status_code == 200:
                     response.encoding = 'utf-8'
-                    soup = BeautifulSoup(response.text, 'lxml')
-                    tags = soup.find_all(['div'], class_='climate-text')
-                    text = re.sub(r"\s+", " ", tags[1].text.strip())
-                    res = re.findall(FLOAT_NUMBER_REGEX, text)
-                    # take the second and fifth value, this is determined by the markup of the site page
-                    temperatures.append(float(res[1]) if len(res[1]) > 0 else 0)
-                    precipitations.append(float(res[4]) if len(res[4]) > 0 else 0)
+                    weather_data = extract_weather_values(response.text)
+                    data.append(
+                        {
+                            'Year': date.year,
+                            'Month': date.month,
+                            'Temperature': weather_data.temperature,
+                            'Precipitations': weather_data.precipitations
+                        }
+                    )
                     break
                 else:
                     time.sleep(HTTP_REQUEST_RETRY_DELAY)
             except requests.exceptions.HTTPError as err:
-                logger.warning(f"\tHTTP error, {city} {month}.{year}, {err}. Retrying...")
+                logger.warning(f"\tHTTP error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
             except requests.exceptions.ConnectionError as err:
-                logger.warning(f"\tConnection error, {city} {month}.{year}, {err}. Retrying...")
+                logger.warning(f"\tConnection error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
             except requests.exceptions.Timeout as err:
-                logger.warning(f"\tTimeout error, {city} {month}.{year}, {err}. Retrying...")
-            except requests.exceptions.RequestException | Exception as err:
-                logger.warning(f"\tError, {city} {month}.{year}, {err}. Retrying...")
+                logger.warning(f"\tTimeout error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
+            except (requests.exceptions.RequestException, Exception) as err:
+                logger.warning(f"\tError, {city.name} {date.month}.{date.year}, {err}. Retrying...")
             if k < HTTP_RETRIES_COUNT - 1:
                 time.sleep(HTTP_REQUEST_RETRY_DELAY)
             else:
-                logger.error(f"\tError, {city} {month}.{year}. Maximum number of request retries reached")
-                return -1
-        if month == 12:
-            df_temperatures[str(year)] = temperatures
-            df_precipitations[str(year)] = precipitations
-            temperatures.clear()
-            precipitations.clear()
+                logger.error(f"\tError, {city.name} {date.month}.{date.year}. Maximum number of request retries reached")
+                return False
         time.sleep(HTTP_REQUEST_DELAY)
-    df_temperatures.to_excel(excel_writer=writer, sheet_name='Temperature', header=True, index=False)
-    df_precipitations.to_excel(excel_writer=writer, sheet_name='Precipitations', header=True, index=False)
-    writer = format_xlsx(writer, df_temperatures, 'c' * (year_to - year_from + 1), 'Temperature')
-    writer = format_xlsx(writer, df_temperatures, 'c' * (year_to - year_from + 1), 'Precipitations')
+    df = pd.DataFrame(data)
+    writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", engine='xlsxwriter')
+    df.to_excel(excel_writer=writer, sheet_name='Data', header=True, index=False)
+    writer = format_xlsx(writer, df, 'c' * df.shape[1], 'Data')
     writer.close()
-    return 0
+    return True
 
 
 def get_full_data(city: str):
@@ -339,9 +358,12 @@ if __name__ == '__main__':
     start_time = time.time()
     logger.info("Started...")
     clear_or_create_dir(OUTPUT_PATH)
-    for city in cities:
-        clear_or_create_dir(f"{OUTPUT_PATH}/{city}")
-        if get_weather_data(city) == 0:
-            plot_trends(city)
-            get_forecasts(city, True)
+    start_date = datetime(year=2000, month=1, day=1)
+    end_date = datetime(year=2021, month=1, day=1)
+    for name, id in cities.items():
+        clear_or_create_dir(f"{OUTPUT_PATH}/{name}")
+        print(get_weather_data(City(name, id), start_date, end_date))
+        # if get_weather_data(city):
+        #     plot_trends(city)
+        #     get_forecasts(city, True)
     logger.info(f"Done. Elapsed time {round((time.time() - start_time), 1)} seconds")
