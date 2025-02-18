@@ -15,8 +15,8 @@ from scipy.optimize import curve_fit
 
 from sklearn.preprocessing import MinMaxScaler
 
-from utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
-from logging_utils import get_logger
+from libs.utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
+from libs.log_utils import get_logger
 
 mpl.rcParams.update({'font.size': 14})
 
@@ -117,6 +117,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
                 return False
         time.sleep(HTTP_REQUEST_DELAY)
     df = pd.DataFrame(data)
+    clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Data', header=True, index=False)
     writer = format_xlsx(writer, df, 'c' * df.shape[1], 'Data')
@@ -317,7 +318,8 @@ def test():
         "Season precipitations sum": "float32",
         "Two seasons precipitations sum": "float32"
     }
-    data = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", sheet_name="Sheet1", usecols=list(test_cols))
+    data = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", sheet_name="Sheet1",
+                         usecols=list(test_cols.keys()), dtype=test_cols)
     get_regression_regularity(data, 'Number (units)')
     get_regression_regularity(data, 'Area (ha)')
     get_regression_regularity(data, 'Forest area (ha)')
@@ -330,7 +332,6 @@ if __name__ == '__main__':
     start_date = datetime(year=2000, month=1, day=1)
     end_date = datetime(year=2021, month=1, day=1)
     for city in cities:
-        clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
         if get_weather_data(city, start_date, end_date):
             plot_trends(city)
             get_forecasts(city, True)
