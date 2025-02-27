@@ -3,17 +3,18 @@ import math
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 
 
-def recursive_rmdir(dir_path: str | Path):
+def recursive_rmdir(directory: str | Path) -> None:
     """
     Function for recursively clearing a directory (removing all nested files and dirs)
 
     Args:
-        dir_path: path to the directory that will be cleared
+        directory: path to the directory that will be cleared
     """
     try:
-        path = Path(dir_path)
+        path = Path(directory)
         if path.is_dir():
             for entry in path.iterdir():
                 if entry.is_file():
@@ -24,18 +25,18 @@ def recursive_rmdir(dir_path: str | Path):
     except PermissionError as e:
         print(f"Insufficient rights to delete. Error message: {e}")
     except FileNotFoundError:
-        print(f"File not found: {dir_path}")
+        print(f"File not found: {directory}")
 
 
-def clear_dir(dir_path: str | Path):
+def clear_dir(directory: str | Path) -> None:
     """
     Function for recursively clearing a directory (removing all nested files and dirs)
 
     Args:
-        dir_path: path to the directory that will be cleared
+        directory: path to the directory that will be cleared
     """
     try:
-        path = Path(dir_path)
+        path = Path(directory)
         if path.is_dir():
             for entry in path.iterdir():
                 if entry.is_file():
@@ -45,18 +46,18 @@ def clear_dir(dir_path: str | Path):
     except PermissionError as e:
         print(f"Insufficient rights to delete. Error message: {e}")
     except FileNotFoundError:
-        print(f"File not found: {dir_path}")
+        print(f"File not found: {directory}")
 
 
-def clear_or_create_dir(dir_path: str | Path):
+def clear_or_create_dir(directory: str | Path) -> None:
     """
     Function to clear a directory or create a new one if the specified directory does not exist
 
     Args:
-        dir_path: path to the directory that will be cleared or created
+        directory: path to the directory that will be cleared or created
     """
     try:
-        path = Path(dir_path)
+        path = Path(directory)
         if path.is_dir():
             clear_dir(path)
         else:
@@ -64,7 +65,7 @@ def clear_or_create_dir(dir_path: str | Path):
     except PermissionError as e:
         print(f"Insufficient rights to delete. Error message: {e}")
     except FileNotFoundError:
-        print(f"File not found: {dir_path}")
+        print(f"File not found: {directory}")
 
 
 def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadding: int = 15,
@@ -94,9 +95,10 @@ def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadd
 
 
 def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None = None,
-                sheet_name: str = 'Sheet1', cell_height: int = 20) -> pd.ExcelWriter:
+                sheet_name: str = 'Sheet1', font_size: Optional[int] = None, border_width: Optional[int] = None,
+                border_color: Optional[str] = None, cell_height: int = 20) -> pd.ExcelWriter:
     """
-    Function for formatting an object of XlsxWriter type.
+    Formats an object of XlsxWriter type.
     Allows to set alignment for each column and adjust cells height.
 
     Args:
@@ -104,23 +106,32 @@ def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None
         df: pandas dataframe with data
         alignments: string indicating columns alignments (r, l, c, j), default is left alignment for all columns
         sheet_name: name of the sheet to be formatted
-        cell_height: cell height
+        font_size: font size for all cells
+        border_width: border width for all cells
+        border_color: border color for all cells
+        cell_height: cell height for all cells
     """
-    if df.shape[0] > 0:
-        workbook = writer.book
-        worksheet = writer.sheets[sheet_name]
-        if alignments is None:
-            alignments = 'l' * df.shape[1]
-        # set column width and alignment
-        a = {'l': 'left', 'r': 'right', 'c': 'center', 'j': 'justify'}
-        for col_index, col_name in enumerate(df.columns):
-            col_width = max(len(col_name), max(len(str(r)) for r in df[col_name])) + 1
-            cell_format = workbook.add_format()
-            cell_format.set_align(a[alignments[col_index]])
-            worksheet.set_column(col_index, col_index, col_width, cell_format)
-        # set cells height
-        for i in range(len(df) + 1):
-            worksheet.set_row(i, cell_height)
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    if alignments is None:
+        alignments = 'l' * df.shape[1]
+    # set column width and alignment
+    a = {'l': 'left', 'r': 'right', 'c': 'center', 'j': 'justify'}
+
+    for col_index, col_name in enumerate(df.columns):
+        col_width = max(len(col_name), max(len(str(r)) for r in df[col_name])) + 1
+        cell_format = workbook.add_format()
+        cell_format.set_align(a[alignments[col_index]])
+        if font_size:
+            cell_format.set_font_size(font_size)
+        if border_width:
+            cell_format.set_border(border_width)
+        if border_color:
+            cell_format.set_border_color(border_color)
+        worksheet.set_column(col_index, col_index, col_width, cell_format)
+    # set cells height
+    for i in range(len(df) + 1):
+        worksheet.set_row(i, cell_height)
     return writer
 
 
