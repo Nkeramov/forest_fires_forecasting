@@ -3,10 +3,10 @@ import math
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 
-def recursive_rmdir(directory: str | Path) -> None:
+def recursive_rmdir(directory: Union[str, Path]) -> None:
     """
     Function for recursively clearing a directory (removing all nested files and dirs)
 
@@ -28,7 +28,7 @@ def recursive_rmdir(directory: str | Path) -> None:
         print(f"File not found: {directory}")
 
 
-def clear_dir(directory: str | Path) -> None:
+def clear_dir(directory: Union[str, Path]) -> None:
     """
     Function for recursively clearing a directory (removing all nested files and dirs)
 
@@ -49,7 +49,7 @@ def clear_dir(directory: str | Path) -> None:
         print(f"File not found: {directory}")
 
 
-def clear_or_create_dir(directory: str | Path) -> None:
+def clear_or_create_dir(directory: Union[str, Path]) -> None:
     """
     Function to clear a directory or create a new one if the specified directory does not exist
 
@@ -68,8 +68,8 @@ def clear_or_create_dir(directory: str | Path) -> None:
         print(f"File not found: {directory}")
 
 
-def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadding: int = 15,
-                             new_filename: str | Path | None = None) -> None:
+def crop_image_white_margins(old_filename: Union[str, Path], xpadding: int = 15, ypadding: int = 15,
+                             new_filename: Optional[Union[str, Path]] = None) -> None:
     """
     Function for cropping images with graphs (white margins at the edges are cut off).
     If a new filename is not passed, the original file will be overwritten
@@ -80,18 +80,25 @@ def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadd
         ypadding: vertical padding
         new_filename: path to the new (cropped) image
     """
-    img = cv2.imread(old_filename)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = 255 * (gray < 128).astype(np.uint8)
-    cords = cv2.findNonZero(gray)
-    x, y, w, h = cv2.boundingRect(cords)
-    rect = img[y - ypadding: y + h + 2 * ypadding, x - xpadding: x + w + 2 * xpadding]
-    is_success, im_buf_arr = cv2.imencode(".png", rect)
-    if new_filename is None:
-        Path(old_filename).unlink()
-        im_buf_arr.tofile(old_filename)
-    else:
-        im_buf_arr.tofile(new_filename)
+    try:
+        img = cv2.imread(str(old_filename))
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = 255 * (gray < 128).astype(np.uint8)
+        cords = cv2.findNonZero(gray)
+        x, y, w, h = cv2.boundingRect(cords)
+        rect = img[y - ypadding: y + h + 2 * ypadding, x - xpadding: x + w + 2 * xpadding]
+        is_success, im_buf_arr = cv2.imencode(".png", rect)
+        if new_filename is None:
+            Path(old_filename).unlink()
+            im_buf_arr.tofile(old_filename)
+        else:
+            im_buf_arr.tofile(new_filename)
+    except FileNotFoundError as e:
+        print(f"File not found error: {e}")
+    except ValueError as e:
+        print(f"Image reading error: {e}")
+    except IOError as e:
+        print(f"IO error: {e}")
 
 
 def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None = None,
