@@ -1,11 +1,10 @@
 import re
 import time
-from pathlib import Path
-
 import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from pathlib import Path
 from bs4 import BeautifulSoup
 from datetime import datetime
 from fake_useragent import UserAgent
@@ -145,7 +144,14 @@ def collect_data(city: City):
     }
     df_statistics = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
                                   usecols=list(statistic_cols.keys()), dtype=statistic_cols)
-    df_weather = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", sheet_name='Data')
+    weather_cols: Dict[str, str] = {
+        'Year': 'int32',
+        'Month': 'int32',
+        'Temperature': 'float64',
+        'Precipitations': 'float64'
+    }
+    df_weather = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", sheet_name='Data',
+                               usecols=list(weather_cols.keys()), dtype=weather_cols)
     df_weather = (df_weather.loc[(df_weather['Month'].between(5, 8, inclusive='both'))]
                           .groupby(by='Year', as_index=False).agg({'Temperature': 'sum', 'Precipitations': 'sum'}))
     df_weather.rename(columns={
@@ -218,7 +224,7 @@ def get_regression_regularity(df: pd.DataFrame, indicator='Area (ha)'):
     logger.info('\t', [round(x, 6) for x in coeff])
 
 
-def fires_number_extrapolation_func(x: list, a: float, b: float, c: float) -> list:
+def fires_number_extrapolation_func(x, a, b, c):
     """
     Extrapolation function for the number of fires.
 
@@ -234,7 +240,7 @@ def fires_number_extrapolation_func(x: list, a: float, b: float, c: float) -> li
     return a + b * x[0] + c * x[1]
 
 
-def fires_area_extrapolation_func(x: list, a: float, b: float, c: float, d: float, e: float, f: float) -> list:
+def fires_area_extrapolation_func(x, a, b, c, d, e, f):
     """
     Extrapolation function for the area of fires.
 
@@ -290,7 +296,7 @@ def get_forecasts(city: City, show_last_year: bool = False):
             p = fires_number_extrapolation_func(x, *popt)
         r2 = round(r2_score(y, p), 2)
         plt.plot(years, p, color='green', linestyle='solid', lw=2, label=f"Forecast  R² = {r2}")
-        maxvalue = max(max(y), max(p))
+        maxvalue = max(np.max(y), np.max(p))
         b = get_tick_bounds(maxvalue, 0)
         plt.xticks(years, fontsize=14)
         plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)

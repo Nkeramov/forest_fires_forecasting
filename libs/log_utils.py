@@ -16,20 +16,20 @@ class CustomColoredFormatter(logging.Formatter):
     red = '\x1b[38;5;196m'
     bold_red = '\x1b[31;1m'
     reset = "\x1b[0m"
-    default_fmt: str = '%(asctime)s | %(levelname)s | %(module)s | %(funcName)s | %(lineno)s | %(message)s'
-    default_datefmt: str = '%Y-%m-%d %H:%M:%S'
+    fmt: str = '%(asctime)s | %(levelname)s | %(module)s | %(funcName)s | %(lineno)s | %(message)s'
+    datefmt: str = '%Y-%m-%d %H:%M:%S'
 
 
-    def __init__(self, fmt: str = None, datefmt: str = None):
-        fmt = fmt or self.default_fmt
-        datefmt = datefmt or self.default_datefmt
-        super().__init__(fmt=fmt, datefmt=datefmt)
+    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None):
+        self.fmt = fmt or self.fmt
+        self.datefmt = datefmt or self.datefmt
+        super().__init__(fmt=self.fmt, datefmt=self.datefmt)
         self.FORMATS = {
-            logging.DEBUG: self.green + self._fmt + self.reset,
-            logging.INFO: self.green + self._fmt + self.reset,
-            logging.WARNING: self.yellow + self._fmt + self.reset,
-            logging.ERROR: self.red + self._fmt + self.reset,
-            logging.CRITICAL: self.bold_red + self._fmt + self.reset
+            logging.DEBUG: self.green + self.fmt + self.reset,
+            logging.INFO: self.green + self.fmt + self.reset,
+            logging.WARNING: self.yellow + self.fmt + self.reset,
+            logging.ERROR: self.red + self.fmt + self.reset,
+            logging.CRITICAL: self.bold_red + self.fmt + self.reset
         }
 
     def format(self, record):
@@ -40,14 +40,13 @@ class CustomColoredFormatter(logging.Formatter):
 
 class LoggerSingleton(metaclass=Singleton):
     __allow_reinitialization: bool = False
-    __logger: Logger = None
+    __logger: Logger = logging.getLogger('SuperLogger')
 
     def __init__(self,
-                 log_dir: Optional[Path] = None, log_file: str = None, level: str = 'INFO',
+                 log_dir: Optional[Path] = None, log_file: Optional[str] = None, level: str = 'INFO',
                  msg_format: str = '%(asctime)s | %(levelname)s | %(module)s | %(funcName)s | %(lineno)s | %(message)s',
                  date_format: str = '%Y-%m-%d %H:%M:%S',
                  colored: bool = False, max_size_mb=10, keep=10):
-        LoggerSingleton.__logger = logging.getLogger('SuperLogger')
         LoggerSingleton.__logger.setLevel(logging.getLevelName(level))
         LoggerSingleton.__logger.handlers.clear()
         stream_handler = logging.StreamHandler()
