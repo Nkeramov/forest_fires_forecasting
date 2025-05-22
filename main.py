@@ -27,9 +27,9 @@ pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 HTTP_RETRIES_COUNT = 3
-HTTP_REQUEST_DELAY = 0.25
-HTTP_REQUEST_TIMEOUT = 10
-HTTP_REQUEST_RETRY_DELAY = 3
+HTTP_REQUEST_DELAY_SECONDS = 0.25
+HTTP_REQUEST_TIMEOUT_SECONDS = 10
+HTTP_REQUEST_RETRY_DELAY_SECONDS = 3
 
 WINDOW_SIZE = 7
 INPUT_PATH = './input'
@@ -88,7 +88,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
             try:
                 payload = {'id': city.id, 'month': date.month, 'year': date.year}
                 header = {'User-Agent': ua.random}
-                response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT)
+                response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT_SECONDS)
                 if response.status_code == 200:
                     response.encoding = 'utf-8'
                     weather_data = extract_weather_values(response.text)
@@ -102,7 +102,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
                     )
                     break
                 else:
-                    time.sleep(HTTP_REQUEST_RETRY_DELAY)
+                    time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
             except requests.exceptions.HTTPError as err:
                 logger.warning(f"\tHTTP error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
             except requests.exceptions.ConnectionError as err:
@@ -112,11 +112,11 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
             except (requests.exceptions.RequestException, Exception) as err:
                 logger.warning(f"\tError, {city.name} {date.month}.{date.year}, {err}. Retrying...")
             if k < HTTP_RETRIES_COUNT - 1:
-                time.sleep(HTTP_REQUEST_RETRY_DELAY)
+                time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
             else:
                 logger.error(f"\tError, {city.name} {date.month}.{date.year}. Maximum number of request retries reached")
                 return False
-        time.sleep(HTTP_REQUEST_DELAY)
+        time.sleep(HTTP_REQUEST_DELAY_SECONDS)
     df = pd.DataFrame(data)
     clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", engine='xlsxwriter')
