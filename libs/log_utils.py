@@ -37,6 +37,7 @@ class CustomColoredFormatter(logging.Formatter):
         """
         self.fmt = fmt
         self.datefmt = datefmt
+        super().__init__(fmt=fmt, datefmt=datefmt)
 
         # Update level colors if custom colors provided
         if colors:
@@ -55,9 +56,7 @@ class CustomColoredFormatter(logging.Formatter):
 
 class LoggerSingleton(metaclass=Singleton):
     """Thread-safe singleton logger with file and stream handlers"""
-    _lock = threading.Lock()
     __logger: Optional[Logger] = None
-    _initialized = False
     __allow_reinitialization: bool = False
 
     DEFAULT_FORMAT = '%(asctime)s | %(levelname)s | %(module)s | %(funcName)s | %(lineno)s | %(message)s'
@@ -67,9 +66,7 @@ class LoggerSingleton(metaclass=Singleton):
                  log_dir: Optional[Path] = None, log_file: Optional[str] = None, level: str = 'INFO',
                  msg_format: str = DEFAULT_FORMAT, date_format: str = DEFAULT_DATE_FORMAT,
                  colored: bool = False, max_size_mb: int = 10, keep: int = 10, **kwargs: Any):
-        with self._lock:
-            if self._initialized and not self.__allow_reinitialization:
-                return
+        if not hasattr(self, '_initialized') or self.__allow_reinitialization:
             self._initialize_logger(log_dir=log_dir, log_file=log_file, level=level, msg_format=msg_format,
                                     date_format=date_format, colored=colored, max_size_mb=max_size_mb, keep=keep,
                                     **kwargs)
@@ -78,11 +75,11 @@ class LoggerSingleton(metaclass=Singleton):
     def _initialize_logger(self, log_dir: Optional[Path], log_file: Optional[str], level: str, msg_format: str,
                            date_format: str, colored: bool, max_size_mb: int, keep: int, **kwargs: Any) -> None:
         """Initialize logger with configured handlers"""
-        LoggerSingleton.__logger = logging.getLogger('SuperLogger')
-        LoggerSingleton.__logger.setLevel(level)
+        self.__class__.__logger = logging.getLogger('SuperLogger')
+        self.__class__.__logger.setLevel(level)
 
         # Clear existing handlers to avoid duplicates
-        LoggerSingleton.__logger.handlers.clear()
+        self.__class__.__logger.handlers.clear()
 
         # Add stream handler
         self._add_stream_handler(level, msg_format, date_format, colored, **kwargs)
@@ -103,7 +100,7 @@ class LoggerSingleton(metaclass=Singleton):
             else logging.Formatter(fmt=msg_format, datefmt=date_format)
         )
         stream_handler.setFormatter(formatter)
-        LoggerSingleton.__logger.addHandler(stream_handler)
+        self.__class__.__logger.addHandler(stream_handler)
 
     def _add_file_handler(self, log_dir: Path, log_file: str, level: str, msg_format: str, date_format: str,
                           max_size_mb: int, keep: int) -> None:
@@ -139,6 +136,6 @@ class LoggerSingleton(metaclass=Singleton):
     @classmethod
     def update_config(cls, **kwargs: Any) -> None:
         """Update logger configuration"""
-        with cls._lock:
+        with cls._class_lock:
             if cls.__logger is not None:
                 cls()._initialize_logger(**kwargs)
