@@ -1,6 +1,5 @@
 import logging
 import logging.handlers
-import threading
 from pathlib import Path
 from logging import Logger
 from colorama import Fore, Style
@@ -32,7 +31,7 @@ class CustomColoredFormatter(logging.Formatter):
 
         Args:
             fmt: Log message format
-            datefmt: Date format
+            datefmt: Log date format
             colors: Optional dict mapping log levels to color names
         """
         self.fmt = fmt
@@ -43,7 +42,7 @@ class CustomColoredFormatter(logging.Formatter):
         if colors:
             self.LEVEL_COLORS.update(
                 {getattr(logging, k.upper()): v for k, v in colors.items()
-                 if k.upper() in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')}
+                 if k.upper() in logging._nameToLevel}
             )
 
     def format(self, record):
@@ -136,6 +135,6 @@ class LoggerSingleton(metaclass=Singleton):
     @classmethod
     def update_config(cls, **kwargs: Any) -> None:
         """Update logger configuration"""
-        with cls._class_lock:
+        with cls._lock:
             if cls.__logger is not None:
                 cls()._initialize_logger(**kwargs)
