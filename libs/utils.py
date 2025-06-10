@@ -142,7 +142,7 @@ def format_xlsx(writer: pd.ExcelWriter, df: pd.DataFrame, alignments: str | None
     return writer
 
 
-def get_tick_bounds(max_val: float, min_val: float = 0) -> list:
+def get_tick_bounds(max_val: float, min_val: float = 0) -> list[int]:
     """
     Dummy function for generating a list of labels on the chart axis.
     The labels step is calculated from the value min and max values on the chart.
@@ -153,7 +153,7 @@ def get_tick_bounds(max_val: float, min_val: float = 0) -> list:
         min_val: min value on the chart
 
     Returns:
-        list: list of values [min value, max value, number of labels]
+        list of int values: min value, max value, number of labels
     """
     min_val, max_val = math.floor(min_val), math.ceil(max_val)
     dif = max_val - min_val
