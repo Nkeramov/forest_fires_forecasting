@@ -1,4 +1,8 @@
-# Yugra forest fires forecasting
+# Forest fires forecasting
+
+![Python](https://img.shields.io/badge/python-3.11-blue.svg)
+[![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+[![license](https://img.shields.io/badge/licence-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 <div align="center">
     <img src="title.jpg" height="300">
