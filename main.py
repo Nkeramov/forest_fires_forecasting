@@ -10,7 +10,7 @@ from datetime import datetime
 from fake_useragent import UserAgent
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
-from typing import Dict, NamedTuple, List
+from typing import NamedTuple, Literal
 from sklearn.preprocessing import MinMaxScaler
 
 import matplotlib as mpl
@@ -41,7 +41,7 @@ WeatherRecord = NamedTuple('WeatherRecord', [('temperature', float), ('precipita
 City = NamedTuple('City', [('name', str), ('id', int)])
 
 # IDs of cities from weather site
-cities: List[City] = [
+cities: list[City] = [
     City('Khanty-Mansiysk', 23933),
     City('October', 23734),
     City('Leushi', 28064),
@@ -49,12 +49,20 @@ cities: List[City] = [
     City('Ugut', 23946)
 ]
 
+IndicatorType = Literal['Forest area (ha)', 'Area (ha)', 'Number (units)']
+indicators: tuple[IndicatorType, IndicatorType, IndicatorType] = (
+    'Forest area (ha)',
+    'Area (ha)',
+    'Number (units)'
+)
+
 logger = LoggerSingleton(
     log_dir=Path('logs'),
     log_file="forecast.log",
     level="INFO",
     colored=True
 ).get_logger()
+
 
 def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool:
     """
@@ -126,7 +134,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
     return True
 
 
-def collect_data(city: City):
+def collect_data(city: City) -> pd.DataFrame:
     """
     Function to collect the complete dataset from fire statistics and a weather data for specified city.
 
@@ -136,7 +144,7 @@ def collect_data(city: City):
     Returns:
         pandas.core.frame.DataFrame: dataframe (fires + weather).
     """
-    statistic_cols: Dict[str, str] = {
+    statistic_cols: dict[str, str] = {
         'Number (units)': 'int32',
         'Area (ha)': 'float32',
         'Forest area (ha)': 'float32',
@@ -144,7 +152,7 @@ def collect_data(city: City):
     }
     df_statistics = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
                                   usecols=list(statistic_cols.keys()), dtype=statistic_cols)
-    weather_cols: Dict[str, str] = {
+    weather_cols: dict[str, str] = {
         'Year': 'int32',
         'Month': 'int32',
         'Temperature': 'float64',
@@ -165,7 +173,7 @@ def collect_data(city: City):
     return df_statistics.copy()
 
 
-def plot_trends(city: City):
+def plot_trends(city: City) -> None:
     """
     Function for plotting graphs with trends for a specified city. Brings data to a scale from 0 to 100 and plots.
     Needed to visualization and explore the dependence of fires on weather data.
@@ -201,7 +209,7 @@ def plot_trends(city: City):
     crop_image_white_margins(filename)
 
 
-def get_regression_regularity(df: pd.DataFrame, indicator='Area (ha)'):
+def get_regression_regularity(df: pd.DataFrame, indicator: IndicatorType = 'Area (ha)') -> None:
     """
     Function for correlation analysis. Allows to explore the dependence of the selected indicator
     (fires area, forest fires area, fires number) on the values of the accumulated temperature and precipitations.
@@ -224,7 +232,8 @@ def get_regression_regularity(df: pd.DataFrame, indicator='Area (ha)'):
     logger.info('\t', [round(x, 6) for x in coeff])
 
 
-def fires_number_extrapolation_func(x, a, b, c):
+def fires_number_extrapolation_func(x: list[np.typing.NDArray[np.float64]], a: np.float64, b: np.float64,
+                                        c: np.float64) -> np.typing.NDArray[np.float64]:
     """
     Extrapolation function for the number of fires.
 
@@ -233,14 +242,18 @@ def fires_number_extrapolation_func(x, a, b, c):
         a: polynomial coefficient.
         b: polynomial coefficient.
         c: polynomial coefficient.
-
     Returns:
-        list: function values.
+        extrapolation function values.
     """
-    return a + b * x[0] + c * x[1]
+    if not (len(x) == 2 and all(isinstance(p, np.ndarray) for p in x)):
+        raise ValueError("Input 'x' must be a list containing two NumPy arrays.")
+    temperature = x[0]
+    precipitations = x[1]
+    return a + b * temperature + c * precipitations
 
 
-def fires_area_extrapolation_func(x, a, b, c, d, e, f):
+def fires_area_extrapolation_func(x: list[np.typing.NDArray[np.float64]], a: np.float64, b: np.float64, c: np.float64,
+                                        d: np.float64, e: np.float64, f: np.float64) -> np.typing.NDArray[np.float64]:
     """
     Extrapolation function for the area of fires.
 
@@ -252,14 +265,18 @@ def fires_area_extrapolation_func(x, a, b, c, d, e, f):
         d: polynomial coefficient.
         e: polynomial coefficient.
         f: polynomial coefficient.
-
     Returns:
-        list: function values.
+        extrapolation function values.
     """
-    return a + b * x[0] + c * x[1] + d * x[0] * x[1] + e * (x[0] ** 2) + f * (x[1] ** 2)
+    if not (len(x) == 2 and all(isinstance(p, np.ndarray) for p in x)):
+        raise ValueError("Input 'x' must be a list containing two NumPy arrays.")
+    temperature = x[0]
+    precipitations = x[1]
+    return a + b * temperature + c * precipitations + d * temperature * precipitations + \
+                e * (temperature * 2) + f * (precipitations * 2)
 
 
-def get_forecasts(city: City, show_last_year: bool = False):
+def get_forecasts(city: City, show_last_year: bool = False) -> None:
     """
     Function of obtaining forecasts. For each city from the cities list, three forecasts are generated:
     for the total area covered by fire, for the forest area covered by fire, for the number of fires.
@@ -271,15 +288,10 @@ def get_forecasts(city: City, show_last_year: bool = False):
     """
     df = collect_data(city)
     years = df['Year'].tolist()
-    indicators = ['Forest area (ha)', 'Area (ha)', 'Number (units)']
     for indicator in indicators:
         x = [np.array(df['Season temperature sum'], dtype=np.float64),
              np.array(df['Two seasons precipitations sum'], dtype=np.float64)]
         y = np.array(df[indicator], dtype=np.float64)
-        if indicator in ['Forest area (ha)', 'Area (ha)']:
-            popt, pcov = curve_fit(fires_area_extrapolation_func, x, y, maxfev=100000)[:2]
-        else:
-            popt, pcov = curve_fit(fires_number_extrapolation_func, x, y, maxfev=100000)[:2]
         fig = plt.figure(dpi=IMG_DPI, figsize=(IMG_WIDTH / IMG_DPI, IMG_HEIGHT / IMG_DPI))
         plt.clf()
         plt.title("Statistics and forecast for natural fires in Khanty-Mansi Autonomous Okrug-Yugra "
@@ -291,12 +303,14 @@ def get_forecasts(city: City, show_last_year: bool = False):
         else:
             plt.plot(years[:-1], y[:-1], color='red', linestyle='solid', lw=2, label='Actual area')
         if indicator in ['Forest area (ha)', 'Area (ha)']:
+            popt, pcov = curve_fit(fires_area_extrapolation_func, x, y, maxfev=100000)[:2]
             p = fires_area_extrapolation_func(x, *popt)
         else:
+            popt, pcov = curve_fit(fires_number_extrapolation_func, x, y, maxfev=100000)[:2]
             p = fires_number_extrapolation_func(x, *popt)
         r2 = round(r2_score(y, p), 2)
         plt.plot(years, p, color='green', linestyle='solid', lw=2, label=f"Forecast  R² = {r2}")
-        maxvalue = max(np.max(y), np.max(p))
+        maxvalue = np.maximum(np.max(y), np.max(p))
         b = get_tick_bounds(maxvalue, 0)
         plt.xticks(years, fontsize=14)
         plt.yticks(np.linspace(start=b[0], stop=b[1], num=b[2], dtype=np.int32), fontsize=14)
@@ -314,7 +328,7 @@ def get_forecasts(city: City, show_last_year: bool = False):
     writer.close()
 
 
-def test():
+def test() -> None:
     city = cities[0]
     test_cols = {
         "Number (units)": "int32",
@@ -327,9 +341,8 @@ def test():
     }
     data = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", sheet_name="Sheet1",
                          usecols=list(test_cols.keys()), dtype=test_cols)
-    get_regression_regularity(data, 'Number (units)')
-    get_regression_regularity(data, 'Area (ha)')
-    get_regression_regularity(data, 'Forest area (ha)')
+    for indicator in indicators:
+        get_regression_regularity(data, indicator)
 
 
 if __name__ == '__main__':
