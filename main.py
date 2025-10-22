@@ -4,7 +4,6 @@ import requests
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from pathlib import Path
 from bs4 import BeautifulSoup
 from datetime import datetime
 from fake_useragent import UserAgent
@@ -57,8 +56,8 @@ indicators: tuple[IndicatorType, IndicatorType, IndicatorType] = (
 )
 
 logger = LoggerSingleton(
-    log_dir=Path('logs'),
-    log_file="forecast.log",
+    log_dir='logs',
+    log_file='forecast.log',
     level="INFO",
     colored=True
 ).get_logger()
@@ -90,7 +89,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
     data = []
     ua = UserAgent()
     dates = pd.date_range(date_from, date_to, freq='MS', inclusive='left')
-    for date in tqdm(dates, total=len(dates), colour='green', desc=f"\tObtaining weather data for {city.name}",
+    for date in tqdm(dates, total=len(dates), colour='green', desc=f"Obtaining weather data for the city={city.name}",
                      position=0, leave=True, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"):
         for k in range(HTTP_RETRIES_COUNT):
             try:
@@ -112,24 +111,25 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
                 else:
                     time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
             except requests.exceptions.HTTPError as err:
-                logger.warning(f"\tHTTP error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
+                logger.warning(f"HTTP error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             except requests.exceptions.ConnectionError as err:
-                logger.warning(f"\tConnection error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
+                logger.warning(f"Connection error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             except requests.exceptions.Timeout as err:
-                logger.warning(f"\tTimeout error, {city.name} {date.month}.{date.year}, {err}. Retrying...")
+                logger.warning(f"Timeout error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             except (requests.exceptions.RequestException, Exception) as err:
-                logger.warning(f"\tError, {city.name} {date.month}.{date.year}, {err}. Retrying...")
+                logger.warning(f"Request error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             if k < HTTP_RETRIES_COUNT - 1:
                 time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
             else:
-                logger.error(f"\tError, {city.name} {date.month}.{date.year}. Maximum number of request retries reached")
+                logger.error(f"Error, city={city.name} date={date.strftime('%Y.%m')}. "
+                             f"Maximum number of request retries reached")
                 return False
         time.sleep(HTTP_REQUEST_DELAY_SECONDS)
     df = pd.DataFrame(data)
     clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Data', header=True, index=False)
-    writer = format_xlsx(writer, df, 'c' * df.shape[1], 'Data')
+    writer = format_xlsx(writer, df, sheet_name='Data', alignments='c' * df.shape[1])
     writer.close()
     return True
 
@@ -221,7 +221,6 @@ def get_regression_regularity(df: pd.DataFrame, indicator: IndicatorType = 'Area
         df: dataframe (fires + weather).
         indicator: indicator for which regression analysis is performed.
     """
-    logger.info(indicator)
     x, y = np.array(df['Accumulated temperature']), np.array(df['Accumulated precipitations (2 years)'])
     z = np.array(df[indicator], dtype=np.float64)
     x, y, z = np.meshgrid(x, y, z, copy=False)
@@ -229,11 +228,12 @@ def get_regression_regularity(df: pd.DataFrame, indicator: IndicatorType = 'Area
     a = np.array([x * 0 + 1, x, y, x * y, x ** 2, y ** 2, (x ** 2) * y, x * (y ** 2), (x ** 2) * (y ** 2)]).T
     b = z.flatten()
     coeff, r, rank, s = np.linalg.lstsq(a, b, rcond=None)
-    logger.info('\t', [round(x, 6) for x in coeff])
+    logger.info(f"Regression regularity for indicator={indicator}, "
+                f"polynomial coefficient values: {*[round(x, 6) for x in coeff],}")
 
 
-def fires_number_extrapolation_func(x: list[np.typing.NDArray[np.float64]], a: np.float64, b: np.float64,
-                                        c: np.float64) -> np.typing.NDArray[np.float64]:
+def fires_number_extrapolation_func(x: list[np.typing.NDArray[np.float64]],
+                                    a: np.float64, b: np.float64, c: np.float64) -> np.typing.NDArray[np.float64]:
     """
     Extrapolation function for the number of fires.
 
@@ -252,8 +252,9 @@ def fires_number_extrapolation_func(x: list[np.typing.NDArray[np.float64]], a: n
     return a + b * temperature + c * precipitations
 
 
-def fires_area_extrapolation_func(x: list[np.typing.NDArray[np.float64]], a: np.float64, b: np.float64, c: np.float64,
-                                        d: np.float64, e: np.float64, f: np.float64) -> np.typing.NDArray[np.float64]:
+def fires_area_extrapolation_func(x: list[np.typing.NDArray[np.float64]],
+                                  a: np.float64, b: np.float64, c: np.float64,
+                                  d: np.float64, e: np.float64, f: np.float64) -> np.typing.NDArray[np.float64]:
     """
     Extrapolation function for the area of fires.
 
@@ -320,11 +321,11 @@ def get_forecasts(city: City, show_last_year: bool = False) -> None:
         filename = f"{OUTPUT_PATH}/{city.name}/forecast_{indicator.lower().split(' (')[0]}.png"
         fig.savefig(filename)
         crop_image_white_margins(filename)
-        logger.info(f"\t{city.name} {indicator}    Forecast for 2020 - {round(p[-1])}, R²={r2}")
+        logger.info(f"City={city.name}, indicator={indicator}, forecast for 2020 - {round(p[-1])}, R²={r2}")
         df[f"Forecast {indicator}"] = [round(x) for x in p]
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", engine='xlsxwriter')
     df.to_excel(excel_writer=writer, sheet_name='Forecast', header=True, index=False)
-    writer = format_xlsx(writer, df, 'c' * len(df.columns), sheet_name='Forecast')
+    writer = format_xlsx(writer, df, sheet_name='Forecast', alignments='c' * len(df.columns))
     writer.close()
 
 
