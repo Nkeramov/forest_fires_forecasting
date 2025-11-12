@@ -18,31 +18,41 @@ Data on average monthly precipitation and temperature were also used for forecas
 
 Based on the results of the fire season, the deviation of the forecast for the total area was no more than 15%.
 
-## Setting up and running the project
+## Setting up and running the project 🚀
+
+### Prerequisites
 Clone repository:
 ```bash 
 git clone https://github.com/Nkeramov/forest_fires_forecasting.git
 ```
-Switch to repo directory
+Switch to repo directory:
 ```bash 
-cd forest_fires_forecasting
+cd ner_analyzer
 ```
-Сreate new virtual environment:
+### Traditional method with venv and pip
+Create and activate virtual environment:
 ```bash 
 python -m venv .venv 
+source .venv/bin/activate       # Linux/Mac
+# or
+./env/Scripts/activate          # Windows
 ```
-If you are using Linux or Mac activate the virtual environment with the command:
-```bash 
-source .venv/bin/activate
-```
-or if you are using Windows use the command:
-```bash 
-./env/Scripts/activate
-```
-Install dependencies from the requirements file:
+Install dependencies and run:
 ```bash
 pip install -r requirements.txt
+python main.py
 ```
-Run with command:
+### Modern method with uv
+Install dependencies and create virtual environment automatically:
 ```bash
-python3 main.py
+uv sync
+```
+Run the project (virtual environment is handled automatically):
+```bash
+uv run python main.py
+```
+Or with explicit activation:
+```bash
+source .venv/bin/activate       # After uv sync
+python main.py
+```
