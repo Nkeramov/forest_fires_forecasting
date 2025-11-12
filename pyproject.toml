@@ -1,4 +1,85 @@
+[project]
+name = "forest_fires_forecasting"
+version = "1.0.0"
+description = "Small project to analyze the dependence of forest fires on weather factors"
+authors = [
+    {name = "Nizam Keramov", email = "keramov.nizam@gmail.com"},
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "lxml == 6.0.0",
+    "tqdm == 4.67.1",
+    "numpy == 2.3.1",
+    "pandas == 2.3.0",
+    "scipy == 1.16.0",
+    "joblib == 1.5.0",
+    "urllib3 == 2.5.0",
+    "pillow == 11.3.0",
+    "colorama == 0.4.6",
+    "openpyxl == 3.1.5",
+    "requests == 2.32.4",
+    "bottleneck == 1.5.0",
+    "XlsxWriter == 3.2.5",
+    "matplotlib == 3.10.3",
+    "certifi == 2025.4.26",
+    "scikit-learn == 1.6.1",
+    "fake_useragent == 2.2.0",
+    "beautifulsoup4 == 4.13.4",
+    "opencv-python == 4.11.0.86",
+    "charset-normalizer == 3.4.2",
+    "typing_extensions == 4.14.0",
+    "types-requests == 2.32.0.20250602",
+]
+keywords = [ 
+    "python",
+    "beatifulsoup",
+    "regression-analysis"
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Repository = "https://github.com/Nkeramov/forest_fires_forecasting"
+"Bug Tracker" = "https://github.com/Nkeramov/forest_fires_forecasting/issues"
+
+[build-system]
+requires = ["setuptools>=78.1.0", "wheel>=0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "mypy==1.18.2",
+    "ruff==0.4.4",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+exclude = [
+    "static*",
+    "templates*",
+    "tests*",
+    "docs*",
+    "*.egg-info*",
+]
+
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
-disallow_untyped_defs = true
+strict = true
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
