@@ -274,7 +274,7 @@ def fires_area_extrapolation_func(x: list[np.typing.NDArray[np.float64]],
     temperature = x[0]
     precipitations = x[1]
     return a + b * temperature + c * precipitations + d * temperature * precipitations + \
-                e * (temperature * 2) + f * (precipitations * 2)
+                e * (temperature ** 2) + f * (precipitations ** 2)
 
 
 def get_forecasts(city: City, show_last_year: bool = False) -> None:
