@@ -1,22 +1,23 @@
 import re
 import time
-import requests
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from bs4 import BeautifulSoup
 from datetime import datetime
-from fake_useragent import UserAgent
-from sklearn.metrics import r2_score
-from scipy.optimize import curve_fit
-from typing import NamedTuple, Literal
-from sklearn.preprocessing import MinMaxScaler
+from pathlib import Path
+from typing import Literal, NamedTuple, get_args
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
+from scipy.optimize import curve_fit
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import MinMaxScaler
+from tqdm import tqdm
 
-from libs.utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
 from libs.log_utils import LoggerSingleton
+from libs.utils import clear_or_create_dir, crop_image_white_margins, format_xlsx, get_tick_bounds
 
 mpl.rcParams.update({'font.size': 14})
 
@@ -26,9 +27,9 @@ pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 HTTP_RETRIES_COUNT = 3
-HTTP_REQUEST_DELAY_SECONDS = 0.25
-HTTP_REQUEST_TIMEOUT_SECONDS = 10
-HTTP_REQUEST_RETRY_DELAY_SECONDS = 3
+HTTP_REQUEST_DELAY_SEC = 0.25
+HTTP_REQUEST_TIMEOUT_SEC = 10
+HTTP_REQUEST_RETRY_DELAY_SEC = 3
 
 WINDOW_SIZE = 7
 INPUT_PATH = './input'
@@ -36,8 +37,18 @@ OUTPUT_PATH = './output'
 IMG_WIDTH, IMG_HEIGHT, IMG_DPI = 3600, 2000, 150
 WEATHER_URl = "http://pogodaiklimat.ru/monitor.php"
 
-WeatherRecord = NamedTuple('WeatherRecord', [('temperature', float), ('precipitations', float)])
-City = NamedTuple('City', [('name', str), ('id', int)])
+#WeatherRecord = NamedTuple('WeatherRecord', [('temperature', float), ('precipitations', float)])
+#City = NamedTuple('City', [('name', str), ('id', int)])
+
+class WeatherRecord(NamedTuple):
+    """Weather record containing temperature and precipitations"""
+    temperature: float
+    precipitations: float
+
+class City(NamedTuple):
+    """City with name and id"""
+    name: str
+    id: int
 
 # IDs of cities from weather site
 cities: list[City] = [
@@ -45,21 +56,17 @@ cities: list[City] = [
     City('October', 23734),
     City('Leushi', 28064),
     City('Lariak', 23867),
-    City('Ugut', 23946)
+    City('Ugut', 23946),
 ]
 
 IndicatorType = Literal['Forest area (ha)', 'Area (ha)', 'Number (units)']
-indicators: tuple[IndicatorType, IndicatorType, IndicatorType] = (
-    'Forest area (ha)',
-    'Area (ha)',
-    'Number (units)'
-)
+indicators: tuple[IndicatorType, ...] = get_args(IndicatorType)
 
 logger = LoggerSingleton(
-    log_dir='logs',
+    log_dir=Path('logs'),
     log_file='forecast.log',
     level="INFO",
-    colored=True
+    colored=True,
 ).get_logger()
 
 
@@ -95,7 +102,7 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
             try:
                 payload = {'id': city.id, 'month': date.month, 'year': date.year}
                 header = {'User-Agent': ua.random}
-                response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT_SECONDS)
+                response = requests.get(WEATHER_URl, headers=header, params=payload, timeout=HTTP_REQUEST_TIMEOUT_SEC)
                 if response.status_code == 200:
                     response.encoding = 'utf-8'
                     weather_data = extract_weather_values(response.text)
@@ -104,12 +111,12 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
                             'Year': date.year,
                             'Month': date.month,
                             'Temperature': weather_data.temperature,
-                            'Precipitations': weather_data.precipitations
-                        }
+                            'Precipitations': weather_data.precipitations,
+                        },
                     )
                     break
                 else:
-                    time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
+                    time.sleep(HTTP_REQUEST_RETRY_DELAY_SEC)
             except requests.exceptions.HTTPError as err:
                 logger.warning(f"HTTP error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             except requests.exceptions.ConnectionError as err:
@@ -119,12 +126,12 @@ def get_weather_data(city: City, date_from: datetime, date_to: datetime) -> bool
             except (requests.exceptions.RequestException, Exception) as err:
                 logger.warning(f"Request error, city={city.name} date={date.strftime('%Y.%m')}, {err}. Retrying...")
             if k < HTTP_RETRIES_COUNT - 1:
-                time.sleep(HTTP_REQUEST_RETRY_DELAY_SECONDS)
+                time.sleep(HTTP_REQUEST_RETRY_DELAY_SEC)
             else:
                 logger.error(f"Error, city={city.name} date={date.strftime('%Y.%m')}. "
                              f"Maximum number of request retries reached")
                 return False
-        time.sleep(HTTP_REQUEST_DELAY_SECONDS)
+        time.sleep(HTTP_REQUEST_DELAY_SEC)
     df = pd.DataFrame(data)
     clear_or_create_dir(f"{OUTPUT_PATH}/{city.name}")
     writer = pd.ExcelWriter(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", engine='xlsxwriter')
@@ -148,7 +155,7 @@ def collect_data(city: City) -> pd.DataFrame:
         'Number (units)': 'int32',
         'Area (ha)': 'float32',
         'Forest area (ha)': 'float32',
-        'Year': 'int32'
+        'Year': 'int32',
     }
     df_statistics = pd.read_excel(f"{INPUT_PATH}/statistics.xlsx", sheet_name='Sheet1',
                                   usecols=list(statistic_cols.keys()), dtype=statistic_cols)
@@ -156,7 +163,7 @@ def collect_data(city: City) -> pd.DataFrame:
         'Year': 'int32',
         'Month': 'int32',
         'Temperature': 'float64',
-        'Precipitations': 'float64'
+        'Precipitations': 'float64',
     }
     df_weather = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/weather.xlsx", sheet_name='Data',
                                usecols=list(weather_cols.keys()), dtype=weather_cols)
@@ -164,7 +171,7 @@ def collect_data(city: City) -> pd.DataFrame:
                           .groupby(by='Year', as_index=False).agg({'Temperature': 'sum', 'Precipitations': 'sum'}))
     df_weather.rename(columns={
         'Temperature': 'Season temperature sum',
-        'Precipitations': 'Season precipitations sum'
+        'Precipitations': 'Season precipitations sum',
     }, inplace=True)
     previous_precipitation_sum = df_weather['Season precipitations sum'].shift(1)
     df_weather['Two seasons precipitations sum'] = df_weather['Season precipitations sum'] + previous_precipitation_sum
@@ -338,7 +345,7 @@ def test() -> None:
         "Year": "int32",
         "Season temperature sum": "float32",
         "Season precipitations sum": "float32",
-        "Two seasons precipitations sum": "float32"
+        "Two seasons precipitations sum": "float32",
     }
     data = pd.read_excel(f"{OUTPUT_PATH}/{city.name}/forecast.xlsx", sheet_name="Sheet1",
                          usecols=list(test_cols.keys()), dtype=test_cols)

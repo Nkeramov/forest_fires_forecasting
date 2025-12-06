@@ -1,8 +1,9 @@
-import cv2
 import math
+from pathlib import Path
+
+import cv2
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 
 def recursive_rmdir(directory: str | Path, remove_root: bool = True) -> None:
@@ -87,7 +88,7 @@ def crop_image_white_margins(old_filename: str | Path, xpadding: int = 15, ypadd
         print(f"File not found error: {e}")
     except ValueError as e:
         print(f"Image reading error: {e}")
-    except IOError as e:
+    except OSError as e:
         print(f"IO error: {e}")
 
 
